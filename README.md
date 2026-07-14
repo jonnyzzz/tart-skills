@@ -193,6 +193,7 @@ Configuration via environment (prefix on the remote side, keep consistent across
 | `TART_DISPLAY` | `1600x900` | logical resolution (also the screenshot/video size) |
 | `TART_USER` / `TART_PASS` | `admin` / `admin` | guest SSH credentials |
 | `TART_DIR` | — | share a host dir into the guest: `name:/host/path[:ro]` |
+| `TART_KEYCHAIN_PW` | — | Mac host user's **login** password; `vm-up` unlocks `login.keychain` with it (required for macOS guests on a headless macOS 15+ host — see notes) |
 
 ## How it works — design notes (all verified on real hardware)
 
@@ -210,6 +211,14 @@ Configuration via environment (prefix on the remote side, keep consistent across
 - **Gatekeeper.** A cask-installed app is quarantined; the first `open` pops a
   "downloaded from the Internet" dialog. Provisioning strips
   `com.apple.quarantine` so `start-ide` opens straight into the IDE.
+- **macOS guests need an unlocked login.keychain (macOS 15+).** Apple's
+  Virtualization.framework refuses to boot a *macOS* guest if the host's
+  `login.keychain` is locked, failing with a misleading `Code=-9` security
+  error ("Failed to create new HostKey"). A headless SSH session leaves it
+  locked. Set `TART_KEYCHAIN_PW` so `vm-up` runs `security unlock-keychain`
+  first — or keep a GUI login session active on the host. Linux guests are
+  unaffected. (See the [tart FAQ](https://tart.run/faq/) and
+  [cirruslabs/tart#1146](https://github.com/cirruslabs/tart/issues/1146).)
 - **`open -a`, not a bare launch.** A Java GUI app launched directly from an SSH
   shell dies with `HeadlessException`; `open -a` routes through launchd into the
   GUI session so windows render.

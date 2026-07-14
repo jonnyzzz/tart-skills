@@ -25,6 +25,13 @@ MEMORY="${TART_MEMORY:-8192}"            # MiB
 DISPLAY_SIZE="${TART_DISPLAY:-1600x900}"
 GUEST_USER="${TART_USER:-admin}"
 GUEST_PASS="${TART_PASS:-admin}"
+# macOS 15+/26 guests need an UNLOCKED login.keychain on the HOST, or Apple's
+# Virtualization.framework fails to boot them with a Code=-9 "security error"
+# ("Failed to create new HostKey") — a headless SSH session leaves the keychain
+# locked. Set TART_KEYCHAIN_PW to the Mac host user's LOGIN password to have
+# vm-up unlock it. (Linux guests don't need this.) Leave empty if a GUI login
+# session already keeps the keychain unlocked.
+KEYCHAIN_PW="${TART_KEYCHAIN_PW:-}"
 SHARE="${TART_DIR:-}"                     # optional: name:/host/path[:ro]  or  /host/path:tag=foo
 STATE_DIR="${TART_STATE_DIR:-$HOME/.tart-remote}"
 ART_DIR="$STATE_DIR/artifacts"
@@ -141,6 +148,14 @@ case "$cmd" in
     vm_exists || { log "VM '$VM' does not exist — creating"; "$0" vm-create; }
     if vm_running && [ -n "$(vm_ip)" ]; then log "VM '$VM' already up at $(vm_ip)"; echo "$(vm_ip)"; exit 0; fi
     tart set "$VM" --cpu "$CPU" --memory "$MEMORY" --display "$DISPLAY_SIZE"
+    # Unlock the host login.keychain for macOS guests (see KEYCHAIN_PW note above).
+    if [ -n "$KEYCHAIN_PW" ]; then
+      if security unlock-keychain -p "$KEYCHAIN_PW" login.keychain 2>/dev/null; then
+        log "host login.keychain unlocked (required for macOS guests on macOS 15+)"
+      else
+        log "WARN: could not unlock login.keychain — a macOS guest may fail with a Code=-9 security error"
+      fi
+    fi
     RUN_ARGS=(run "$VM" --no-graphics)
     [ -n "$SHARE" ] && RUN_ARGS+=(--dir="$SHARE")
     log "booting '$VM' detached (--no-graphics, full GUI session inside): tart ${RUN_ARGS[*]}"
@@ -173,9 +188,13 @@ case "$cmd" in
 
   provision)
     preflight
-    SRC="$(cd "$(dirname "$0")/.." && pwd)/provision/provision.sh"
-    [ -f "$SRC" ] || SRC="${TART_PROVISION:-$SRC}"
-    [ -f "$SRC" ] || die "provision.sh not found (looked at $SRC; set TART_PROVISION)"
+    SRC=""
+    SELFDIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+    for c in "${TART_PROVISION:-}" "$SELFDIR/provision/provision.sh" \
+             "$HOME/tart-skills/provision/provision.sh" "$HOME/provision/provision.sh"; do
+      [ -n "$c" ] && [ -f "$c" ] && { SRC="$c"; break; }
+    done
+    [ -n "$SRC" ] || die "provision.sh not found (set TART_PROVISION, or place it at ~/tart-skills/provision/provision.sh)"
     log "copying + running provision.sh in guest (installs take a while)"
     gscp "$SRC" ":/tmp/provision.sh"
     gssh 'bash /tmp/provision.sh'

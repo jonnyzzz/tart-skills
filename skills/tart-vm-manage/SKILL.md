@@ -23,6 +23,15 @@ ssh "$MAC" 'TART_VM=my-vm TART_IMAGE=ghcr.io/cirruslabs/macos-tahoe-base:latest 
 Defaults: `tart-skills-vm`, `macos-tahoe-base:latest`, 4 CPU / 8 GiB / 1600x900.
 Keep the SAME `TART_VM` across all calls in a session (export it or repeat it).
 
+**macOS guest on a headless Mac:** Apple's Virtualization.framework won't boot a
+*macOS* guest unless the host's `login.keychain` is unlocked — over SSH it is
+locked, and `vm-up` fails with a `Code=-9` "security error" ("Failed to create
+new HostKey"). Pass the Mac host user's **login** password so `vm-up` unlocks it:
+```bash
+ssh "$MAC" 'TART_VM=tart-skills-vm TART_KEYCHAIN_PW="<host-login-pw>" ~/bin/tart-remote vm-up'
+```
+(Or keep a GUI login session active on the Mac. Linux guests don't need this.)
+
 ## Lifecycle
 
 1. **Boot (creates + clones on first use, then boots detached, waits for IP):**
