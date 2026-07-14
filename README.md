@@ -67,8 +67,29 @@ Each lives in `skills/<name>/SKILL.md`:
 | **[tart-remote-setup](skills/tart-remote-setup/SKILL.md)** | Establish the Linux→Mac SSH hop, install `tart-remote`, verify Tart. **Run first.** |
 | **[tart-vm-manage](skills/tart-vm-manage/SKILL.md)** | Create / boot (detached) / provision / status / stop / delete the VM. |
 | **[tart-vm-screenshot](skills/tart-vm-screenshot/SKILL.md)** | Capture the VM screen as a PNG — the agent's "eyes". |
-| **[tart-vm-intellij](skills/tart-vm-intellij/SKILL.md)** | Launch IntelliJ IDEA, open a project, click/type to drive it. |
+| **[tart-vm-intellij](skills/tart-vm-intellij/SKILL.md)** | Launch IntelliJ IDEA (via [devrig](https://devrig.dev)), open a project, click/type to drive it. |
 | **[tart-vm-video](skills/tart-vm-video/SKILL.md)** | Record the GUI as video (`.mov` → compact `.mp4`). |
+| **[tart-vm-cache](skills/tart-vm-cache/SKILL.md)** | Share ONE copy of the IDE binaries across all VMs (host cache) — faster, less disk. Manages IDEs with [devrig](https://devrig.dev). |
+
+## Sharing the Mac across tasks
+
+The Mac host is shared — many agents/tasks use it at once. The skills bake in
+etiquette so they don't step on each other:
+
+- **Unique VM per task** (`TART_VM=tart-skills-<task-id>`); `tart-remote ls`
+  shows all VMs — only touch your own.
+- **Always clean up** (`vm-gc`) when done, even on failure.
+- **Size modestly** so neighbors keep headroom.
+
+## IDE management & caching
+
+- **[devrig](https://devrig.dev)** is the recommended tool to download, install,
+  and start JetBrains IDEs for the agent (`devrig backend download/start
+  idea-community`). See **tart-vm-intellij** and **tart-vm-cache**.
+- **Shared IDE cache:** one copy of the IDE binaries lives in a host folder
+  (`~/tart-skills-cache`), mounted read-only into every VM — no per-VM download,
+  no per-VM disk copy. `tart-remote cache-setup` populates it; `vm-up` mounts it;
+  the IDE runs straight from the mount. See **tart-vm-cache**.
 
 ## Prerequisites
 

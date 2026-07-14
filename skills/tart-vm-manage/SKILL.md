@@ -1,6 +1,6 @@
 ---
 name: tart-vm-manage
-description: Use to create, boot, provision, check, stop, or delete a tart macOS VM on the remote Mac host - the VM lifecycle "service". Boots a full-GUI macOS session that survives your SSH session closing. Run tart-remote-setup first.
+description: Use to create, boot, provision, check, stop, or delete a tart macOS VM on the remote Mac host - the VM lifecycle "service". Boots a full-GUI macOS session that survives your SSH session closing. Covers shared-host etiquette and cleanup. Run tart-remote-setup first.
 ---
 
 # tart-vm-manage
@@ -9,6 +9,23 @@ Manage the lifecycle of a full-GUI macOS tart VM on the Mac host. The VM is a
 supervised resource: `vm-up` boots it **detached**, so it keeps running (and
 keeps its GUI session alive) after your SSH command returns and your agent
 connection closes. This is the "keep the VM alive" management layer.
+
+## ⚠️ The Mac host is SHARED — be a good neighbor
+
+Other agents and tasks use the SAME Mac. Follow these rules or you WILL disrupt
+them:
+
+1. **Use a UNIQUE VM name per task.** Never rely on the default `tart-skills-vm`
+   when others may be active — pick a name tied to your task, e.g.
+   `TART_VM=tart-skills-<task-id>`. Set it on EVERY command.
+2. **Check who's already there first:** `ssh "$MAC" '~/bin/tart-remote ls'`
+   lists all VMs. Only ever stop/delete/inspect a VM **you** created.
+3. **Always clean up when done** — see "Clean up" below. A leaked running VM
+   eats a neighbor's RAM/CPU.
+4. **Size modestly.** Don't grab all cores/RAM (`TART_CPU`/`TART_MEMORY`); leave
+   headroom for others.
+5. **Never delete the shared cache** (`tart-vm-cache`) or the base images, and
+   never `vm-gc` a VM you didn't create.
 
 Assumes `MAC="$MAC_USER@$MAC_HOST"` and `tart-remote` installed (see
 tart-remote-setup). Prefix every command with `ssh "$MAC" '~/bin/tart-remote ...'`.
@@ -59,11 +76,14 @@ ssh "$MAC" 'TART_VM=tart-skills-vm TART_KEYCHAIN_PW="<host-login-pw>" ~/bin/tart
    ssh "$MAC" '~/bin/tart-remote guest "sw_vers -productVersion; whoami"'
    ```
 
-5. **Tear down:**
+5. **Clean up (REQUIRED when your task is done):**
    ```bash
-   ssh "$MAC" '~/bin/tart-remote vm-down'    # stop, keep the disk
-   ssh "$MAC" '~/bin/tart-remote vm-gc'      # stop + delete the VM entirely
+   ssh "$MAC" 'TART_VM=<your-vm> ~/bin/tart-remote vm-gc'    # stop + delete YOUR VM
    ```
+   Use `vm-down` (stop, keep the disk) only if you will resume the same VM
+   shortly; otherwise `vm-gc` to reclaim the disk. Do this even if your task
+   failed. Then confirm nothing of yours lingers: `~/bin/tart-remote ls`.
+   Leave other tasks' VMs and the shared cache alone.
 
 ## Notes
 

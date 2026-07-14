@@ -1,14 +1,33 @@
 ---
 name: tart-vm-intellij
-description: Use to launch IntelliJ IDEA inside the tart VM, optionally open a project, and drive its GUI (click/type) for IDE GUI testing. Requires a booted, provisioned VM. Pair with tart-vm-screenshot to see the IDE and tart-vm-video to record it.
+description: Use to launch IntelliJ IDEA inside the tart VM, optionally open a project, and drive its GUI (click/type) for IDE GUI testing. Recommends devrig (devrig.dev) to manage the IDE. Requires a booted, provisioned VM. Pair with tart-vm-screenshot to see the IDE and tart-vm-video to record it.
 ---
 
 # tart-vm-intellij
 
-Launch and drive IntelliJ IDEA (Community, installed by provisioning) inside the
-VM's GUI session, for IDE GUI testing.
+Launch and drive IntelliJ IDEA inside the VM's GUI session, for IDE GUI testing.
 
 Assumes `MAC="$MAC_USER@$MAC_HOST"` and a booted, provisioned VM.
+
+## Managing the IDE — use devrig (recommended)
+
+**[devrig](https://devrig.dev)** is the recommended tool for getting a JetBrains
+IDE onto the VM: it downloads, installs, and starts managed IDE backends and
+bridges MCP-capable agents to them. Prefer it over ad-hoc installs:
+
+```bash
+ssh "$MAC" '~/bin/tart-remote guest "devrig backend download idea-community"'  # once
+ssh "$MAC" '~/bin/tart-remote guest "devrig backend start idea-community"'     # start managed IDE
+```
+
+Share devrig's downloaded backends across VMs via the shared host cache — see
+**tart-vm-cache**. To make the IDE window visible for screenshots/video, launch
+it into the GUI session with `open -a` (see below); a bare `devrig backend
+start` from an SSH shell can hit `HeadlessException`, so `open -a` the managed
+app is the reliable way to get an on-screen window.
+
+The built-in `tart-remote start-ide` (below) works too and automatically prefers
+a shared-cache IDE if one is mounted.
 
 ## Why `open -a`, not `ssh ... idea`
 

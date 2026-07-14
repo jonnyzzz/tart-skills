@@ -33,6 +33,12 @@ GUEST_PASS="${TART_PASS:-admin}"
 # session already keeps the keychain unlocked.
 KEYCHAIN_PW="${TART_KEYCHAIN_PW:-}"
 SHARE="${TART_DIR:-}"                     # optional: name:/host/path[:ro]  or  /host/path:tag=foo
+# Shared host cache — one copy of heavy binaries (IntelliJ) on the HOST, mounted
+# read-only into every VM. Saves re-downloading per VM and avoids a per-VM copy
+# in each guest's disk. Shared across ALL tart-skills VMs on this host.
+CACHE_DIR="${TART_CACHE_DIR:-$HOME/tart-skills-cache}"
+CACHE_TAG=tartcache
+GUEST_CACHE="/Volumes/My Shared Files/$CACHE_TAG"   # mount point inside the guest
 STATE_DIR="${TART_STATE_DIR:-$HOME/.tart-remote}"
 ART_DIR="$STATE_DIR/artifacts"
 MUX="$STATE_DIR/mux-$VM"
@@ -116,7 +122,12 @@ VM lifecycle (management "service"):
   vm-status            running? ip? provisioned?
   vm-down              stop the VM (keeps the disk)
   vm-gc                delete the VM entirely
+  vm-list | ls         list ALL tart VMs on this host (respect ones you didn't create)
   provision            copy + run provision.sh in the guest (IntelliJ, ffmpeg, TCC grant)
+
+Shared host cache (one IDE copy for all VMs — faster, less disk):
+  cache-setup          download IntelliJ IDEA CE into \$TART_CACHE_DIR once (on the host)
+  cache-status         show what the shared cache holds
 
 Drive the GUI (for GUI testing):
   guest [cmd...]       run a command in the guest (interactive shell if no cmd)
@@ -128,8 +139,10 @@ Drive the GUI (for GUI testing):
   key KEYSTROKE        send a key/combo, e.g. 'cmd+space' (cliclick ku:/kd:)
   pull :REMOTE LOCAL   copy a file out of the guest to the host
 
-Env: TART_VM TART_IMAGE TART_CPU TART_MEMORY TART_DISPLAY TART_USER TART_PASS TART_DIR
+Env: TART_VM TART_IMAGE TART_CPU TART_MEMORY TART_DISPLAY TART_USER TART_PASS
+     TART_DIR TART_CACHE_DIR TART_KEYCHAIN_PW
 Current: VM=$VM IMAGE=$IMAGE CPU=$CPU MEM=${MEMORY}MiB DISPLAY=$DISPLAY_SIZE
+         CACHE_DIR=$CACHE_DIR
 EOF
 }
 
@@ -158,6 +171,9 @@ case "$cmd" in
     fi
     RUN_ARGS=(run "$VM" --no-graphics)
     [ -n "$SHARE" ] && RUN_ARGS+=(--dir="$SHARE")
+    # mount the shared host cache read-only (if it exists) so the guest can reuse
+    # cached IDE binaries instead of downloading its own copy
+    [ -d "$CACHE_DIR" ] && RUN_ARGS+=(--dir="$CACHE_TAG:$CACHE_DIR:ro")
     log "booting '$VM' detached (--no-graphics, full GUI session inside): tart ${RUN_ARGS[*]}"
     # Detach hard: nohup ignores SIGHUP, </dev/null + >log frees the SSH channel,
     # `disown` drops it from this shell's job table. The VM then outlives the
@@ -236,8 +252,9 @@ case "$cmd" in
     PROJECT="${1:-}"
     # `open -a` routes through launchd into the user's Aqua GUI session, so the
     # IDE gets a real desktop context (an SSH-forked java dies HeadlessException).
-    APP="$(gssh 'ls -d /Applications/IntelliJ*.app 2>/dev/null | head -1')"
-    [ -n "$APP" ] || die "IntelliJ not found in guest /Applications — run: tart-remote provision"
+    # Prefer the shared host cache (mounted read-only) over a per-VM install.
+    APP="$(gssh "for d in \"$GUEST_CACHE/ide\" /Applications; do ls -d \"\$d\"/IntelliJ*.app 2>/dev/null; done | head -1")"
+    [ -n "$APP" ] || die "IntelliJ not found (shared cache or /Applications) — run: tart-remote cache-setup and/or provision"
     if [ -n "$PROJECT" ]; then
       log "opening IntelliJ with project: $PROJECT"
       gssh "open -a '$APP' '$PROJECT'"
@@ -253,6 +270,44 @@ case "$cmd" in
   key)   K="${1:?keystroke}"; gssh "cliclick kp:'$K' 2>/dev/null || cliclick t:'$K'"; ;;
 
   pull)  gscp "$1" "$2"; ;;
+
+  vm-list|ls)
+    # show ALL tart VMs on this shared host so you can pick a free name and see
+    # which VMs belong to other tasks — never stop/delete a VM you did not create
+    preflight; tart list
+    ;;
+
+  cache-setup)
+    # Populate the shared host cache with the IntelliJ IDEA CE app ONCE, on the
+    # host. Every VM then mounts it read-only (vm-up) and runs the IDE from
+    # there — no per-VM download, no per-VM copy. Runs on macOS (hdiutil/curl are
+    # stock; no Homebrew needed).
+    mkdir -p "$CACHE_DIR/ide"
+    if ls -d "$CACHE_DIR"/ide/IntelliJ*.app >/dev/null 2>&1; then
+      log "IDE already cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
+    else
+      URL="${TART_IDE_URL:-https://download.jetbrains.com/product?code=IIC&latest&distribution=macM1}"
+      log "downloading IntelliJ IDEA CE into shared cache (once): $URL"
+      curl -fL "$URL" -o /tmp/tart-idea.dmg
+      MNT="$(mktemp -d)"
+      hdiutil attach -nobrowse -quiet -mountpoint "$MNT" /tmp/tart-idea.dmg
+      cp -R "$MNT"/*.app "$CACHE_DIR/ide/" 2>/dev/null || { hdiutil detach -quiet "$MNT"; die "no .app in the downloaded dmg"; }
+      hdiutil detach -quiet "$MNT"; rm -f /tmp/tart-idea.dmg
+      xattr -dr com.apple.quarantine "$CACHE_DIR"/ide/*.app 2>/dev/null || true
+      log "cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
+    fi
+    du -sh "$CACHE_DIR" 2>/dev/null | awk '{print "cache size: "$1}'
+    ;;
+
+  cache-status)
+    echo "cache_dir=$CACHE_DIR"
+    if [ -d "$CACHE_DIR" ]; then
+      echo "exists=yes size=$(du -sh "$CACHE_DIR" 2>/dev/null | awk '{print $1}')"
+      echo "ide=$(ls -d "$CACHE_DIR"/ide/IntelliJ*.app 2>/dev/null | head -1 || echo none)"
+    else
+      echo "exists=no (run: tart-remote cache-setup)"
+    fi
+    ;;
 
   ""|-h|--help|help) usage; ;;
   *) log "unknown subcommand: $cmd"; usage; exit 1; ;;

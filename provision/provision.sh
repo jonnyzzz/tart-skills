@@ -30,7 +30,12 @@ brew install cliclick displayplacer ffmpeg 2>&1 | tail -2 || true
 
 # 3. IntelliJ IDEA Community (the app under GUI test). CE bundles its own JBR,
 #    so no separate JDK is needed just to launch the IDE.
-if ! ls -d /Applications/IntelliJ*.app >/dev/null 2>&1; then
+CACHE_IDE_DIR="/Volumes/My Shared Files/tartcache/ide"
+if ls -d "$CACHE_IDE_DIR"/IntelliJ*.app >/dev/null 2>&1; then
+  # The host shared cache already has the IDE (mounted read-only by vm-up). Skip
+  # the per-VM download/install — the IDE runs straight from the shared mount.
+  log "shared IDE found in host cache ($CACHE_IDE_DIR) — skipping per-VM IntelliJ install"
+elif ! ls -d /Applications/IntelliJ*.app >/dev/null 2>&1; then
   log "installing IntelliJ IDEA Community (cask; large download)..."
   brew install --cask intellij-idea-ce 2>&1 | tail -3 || true
 fi
