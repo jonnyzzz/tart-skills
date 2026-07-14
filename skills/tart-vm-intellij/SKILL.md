@@ -57,10 +57,10 @@ done
 ## Get a project into the VM first (if needed)
 
 ```bash
-# copy a local project up to the Mac, then into the guest
+# copy a local project up to the Mac, then push it INTO the guest
 scp -r ./myproj "$MAC":/tmp/myproj
 ssh "$MAC" '~/bin/tart-remote guest "mkdir -p ~/Work"'
-ssh "$MAC" '~/bin/tart-remote pull /tmp/myproj :/Users/admin/Work/myproj'  # host->guest
+ssh "$MAC" '~/bin/tart-remote push /tmp/myproj /Users/admin/Work/myproj'   # host -> guest
 ```
 (Or share a host dir at boot with `TART_DIR=name:/host/path` in tart-vm-manage.)
 

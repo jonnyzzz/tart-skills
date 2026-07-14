@@ -43,11 +43,19 @@ Keep the SAME `TART_VM` across all calls in a session (export it or repeat it).
 **macOS guest on a headless Mac:** Apple's Virtualization.framework won't boot a
 *macOS* guest unless the host's `login.keychain` is unlocked — over SSH it is
 locked, and `vm-up` fails with a `Code=-9` "security error" ("Failed to create
-new HostKey"). Pass the Mac host user's **login** password so `vm-up` unlocks it:
-```bash
-ssh "$MAC" 'TART_VM=tart-skills-vm TART_KEYCHAIN_PW="<host-login-pw>" ~/bin/tart-remote vm-up'
-```
-(Or keep a GUI login session active on the Mac. Linux guests don't need this.)
+new HostKey").
+
+- **Preferred:** keep the keychain unlocked on the host once (a GUI login
+  session, or a host-side `security unlock-keychain` as part of host setup). Then
+  no password is needed on any command. Linux guests never need this.
+- **Otherwise:** pass the host user's **login** password so `vm-up` unlocks it —
+  but note this puts the password on the command line (visible in the host's
+  process list); use only on a trusted host:
+  ```bash
+  ssh "$MAC" "$V TART_KEYCHAIN_PW='<host-login-pw>' ~/bin/tart-remote vm-up"
+  ```
+  If the supplied password can't unlock the keychain, `vm-up` aborts (the guest
+  wouldn't boot anyway).
 
 ## Lifecycle
 

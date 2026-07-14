@@ -48,8 +48,14 @@ MAC="$MAC_USER@$MAC_HOST"
    installed, `tart-remote` falls back to OpenSSH's `SSH_ASKPASS` for the inner
    (Mac→guest) hop, so `tart` + stock `ssh` are the only hard dependencies.
 
-2. **Install the orchestrator + provisioning on the Mac** (copy this repo's
-   `bin/tart-remote` and `provision/provision.sh`). From the repo root:
+2. **Install the orchestrator + provisioning on the Mac** — this is a **one-time
+   per-host** step and writes shared files. If the host is already set up
+   (another task did it), **skip this** to avoid overwriting a version in use:
+   ```bash
+   ssh "$MAC" 'test -x ~/bin/tart-remote && ~/bin/tart-remote --help >/dev/null 2>&1 && echo ALREADY-INSTALLED'
+   ```
+   If not installed (or you are intentionally updating it), copy this repo's
+   `bin/tart-remote` and `provision/provision.sh` from the repo root:
    ```bash
    ssh "$MAC" 'mkdir -p ~/bin ~/.tart-remote'
    scp bin/tart-remote "$MAC":~/bin/tart-remote

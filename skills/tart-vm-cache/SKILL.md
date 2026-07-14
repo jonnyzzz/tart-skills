@@ -30,20 +30,16 @@ ssh "$MAC" '~/bin/tart-remote guest "devrig backend start idea-community"'      
 # stop with:  devrig backend stop idea-community
 ```
 
-devrig stores backends under its home (`~/.mcp-steroid`). **To share those
-downloads across all VMs**, point devrig's home at the shared cache mount so the
-download happens once:
+devrig stores backends under its home (`~/.mcp-steroid`), which is **per-VM** and
+writable. Because devrig can `open`/`start` a real IDE window, the agent can
+drive and screenshot it exactly as in **tart-vm-intellij**.
 
-```bash
-# one-time, inside a VM: redirect devrig's home into the shared (writable) cache
-ssh "$MAC" '~/bin/tart-remote guest "ln -sfn \"/Volumes/My Shared Files/tartcache/mcp-steroid\" ~/.mcp-steroid"'
-```
-(Mount the cache read-write for the VM that populates it — set
-`TART_DIR=tartcache:$TART_CACHE_DIR` without `:ro` for that one boot — then
-read-only for consumers.)
-
-Because devrig can `open`/`start` a real IDE window, the agent can drive and
-screenshot it exactly as in **tart-vm-intellij**.
+> **Sharing devrig's downloads across VMs is not wired up here.** Don't symlink
+> devrig's writable home onto the read-only shared mount — devrig needs to write
+> locks/state and it would break. Until devrig exposes a setting for an
+> immutable, shared download location, either (a) let each VM run its own devrig
+> (simplest), or (b) use the built-in shared cache below for the IDE binaries.
+> These two mechanisms are independent — don't mix them on the same VM.
 
 ## Simple built-in cache (no devrig): cache-setup
 
@@ -60,12 +56,15 @@ After `cache-setup`, any VM booted with `vm-up` mounts the cache, `provision`
 shared mount. (Verified: a fresh VM with no IDE in `/Applications` runs IntelliJ
 straight from the read-only shared mount.)
 
-## Etiquette
+## Etiquette (shared resource)
 
-- The cache is **shared by all tasks** — treat it as read-only. Populate it with
-  `cache-setup` / devrig, but **never delete it** to "clean up"; other tasks and
+- The cache is **shared by every task on the host**. As a normal task, treat it
+  as **read-only**: call `cache-status`, and just boot your VM (it mounts the
+  cache automatically). Do **not** delete it to "clean up" — other tasks and
   future VMs depend on it.
-- `cache-status` tells you if it's already populated before you trigger a
-  download.
+- **Populating/refreshing the cache (`cache-setup`) is a one-time administrative
+  action.** `cache-setup` takes an exclusive lock and publishes the app
+  atomically, so it's safe to run, but you normally shouldn't need to — check
+  `cache-status` first; if the IDE is already there, do nothing.
 - Base OS images are already deduplicated by Tart on the host — you don't need
   to cache those.

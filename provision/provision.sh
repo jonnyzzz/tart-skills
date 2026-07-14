@@ -75,5 +75,12 @@ INSERT OR REPLACE INTO access
 "
 sqlite3 "$TCC_USER" "$SQL_AE" 2>&1 || log "AppleEvents TCC grant failed (schema mismatch?)"
 
+# Verify the ESSENTIAL tool before claiming success — cliclick is what makes GUI
+# driving possible; if it's missing the VM is not usable for GUI testing.
+if ! command -v cliclick >/dev/null 2>&1; then
+  log "FATAL: cliclick did not install — not marking provisioned"
+  exit 1
+fi
+IDE_LOC="$(ls -d "$CACHE_IDE_DIR"/IntelliJ*.app /Applications/IntelliJ*.app 2>/dev/null | head -1 || echo none)"
 touch "$HOME/.tart-skills-provisioned"
-log "done. cliclick=$(command -v cliclick || echo MISSING), ffmpeg=$(command -v ffmpeg || echo MISSING), IDE=$(ls -d /Applications/IntelliJ*.app 2>/dev/null | head -1 || echo MISSING)"
+log "done. cliclick=$(command -v cliclick), ffmpeg=$(command -v ffmpeg || echo MISSING), IDE=$IDE_LOC"

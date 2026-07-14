@@ -141,8 +141,10 @@ On the Apple Silicon Mac you will drive:
 ## Quick start
 
 ```bash
-# 0. from the agent, point at your Mac
+# 0. from the agent, point at your Mac + pick a UNIQUE VM name for this task
+#    (the Mac is shared — a unique name keeps you from clobbering other tasks)
 MAC=me@my-mac.local          # MAC_USER@MAC_HOST
+export V="TART_VM=tart-skills-demo42"    # your task-unique name, passed on every call
 
 # 1. install the orchestrator on the Mac (from this repo checkout)
 ssh "$MAC" 'mkdir -p ~/bin ~/tart-skills/provision'
@@ -150,29 +152,30 @@ scp bin/tart-remote            "$MAC":~/bin/tart-remote
 scp provision/provision.sh     "$MAC":~/tart-skills/provision/provision.sh
 ssh "$MAC" 'chmod +x ~/bin/tart-remote ~/tart-skills/provision/provision.sh'
 
-# 2. boot a full-GUI macOS VM (first run pulls the base image — minutes)
-ssh "$MAC" '~/bin/tart-remote vm-up'          # prints the VM IP
+# 2. boot a full-GUI macOS VM (first run pulls the base image — minutes).
+#    On a headless macOS 15+ host add TART_KEYCHAIN_PW=... (see notes).
+ssh "$MAC" "$V ~/bin/tart-remote vm-up"          # prints the VM IP
 
 # 3. provision it once (cliclick, ffmpeg, IntelliJ CE, screen-recording grant)
-ssh "$MAC" '~/bin/tart-remote provision'
+ssh "$MAC" "$V ~/bin/tart-remote provision"
 
 # 4. SEE the GUI
-ssh "$MAC" '~/bin/tart-remote screenshot -' > desktop.png
+ssh "$MAC" "$V ~/bin/tart-remote screenshot -" > desktop.png
 
 # 5. launch IntelliJ and watch it come up
-ssh "$MAC" '~/bin/tart-remote start-ide'
+ssh "$MAC" "$V ~/bin/tart-remote start-ide"
 sleep 25
-ssh "$MAC" '~/bin/tart-remote screenshot -' > ide.png
+ssh "$MAC" "$V ~/bin/tart-remote screenshot -" > ide.png
 
 # 6. drive the GUI: click / type
-ssh "$MAC" '~/bin/tart-remote click 800 450'
-ssh "$MAC" '~/bin/tart-remote type "hello"'
+ssh "$MAC" "$V ~/bin/tart-remote click 800 450"
+ssh "$MAC" "$V ~/bin/tart-remote type 'hello'"
 
 # 7. record a short video of the GUI
-ssh "$MAC" '~/bin/tart-remote record 15 -' > clip.mov
+ssh "$MAC" "$V ~/bin/tart-remote record 15 -" > clip.mov
 
-# 8. tear down
-ssh "$MAC" '~/bin/tart-remote vm-down'        # stop (keep disk)  |  vm-gc to delete
+# 8. ALWAYS clean up your VM when done (even on failure)
+ssh "$MAC" "$V ~/bin/tart-remote vm-gc"          # stop + delete YOUR VM
 ```
 
 ![IntelliJ IDEA launched inside the VM and driven over SSH](docs/img/intellij-launched.png)

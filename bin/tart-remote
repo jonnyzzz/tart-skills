@@ -68,14 +68,19 @@ GUEST_SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 # OpenSSH's SSH_ASKPASS (SSH_ASKPASS_REQUIRE=force works with no tty on
 # OpenSSH 8.4+, which ships with modern macOS) — so the ONLY hard dependency on
 # the Mac host is `tart` + stock `ssh`, no Homebrew required.
-ASKPASS="$STATE_DIR/askpass.sh"
+ASKPASS="$STATE_DIR/askpass-$VM.sh"    # per-VM, so concurrent VMs never share it
 if command -v sshpass >/dev/null 2>&1; then
   AUTH=sshpass
 else
   AUTH=askpass
-  printf '#!/bin/sh\nprintf %%s %q\n' "$GUEST_PASS" > "$ASKPASS"
+  ( umask 077; printf '#!/bin/sh\nprintf %%s %q\n' "$GUEST_PASS" > "$ASKPASS" )  # 0600
   chmod 700 "$ASKPASS"
 fi
+close_mux() {   # cleanly close the multiplexed master, then drop the socket
+  [ -S "$MUX" ] && ssh -o ControlPath="$MUX" -O exit x 2>/dev/null || true
+  rm -f "$MUX"
+}
+is_int() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
 _ssh() {  # _ssh <ssh|scp> <args...>
   local bin="$1"; shift
   if [ "$AUTH" = sshpass ]; then
@@ -103,7 +108,7 @@ gscp() {
   local ip; ip="$(vm_ip)"; [ -n "$ip" ] || die "VM '$VM' has no IP — run: tart-remote vm-up"
   # usage: gscp <local> :<remote>   OR   gscp :<remote> <local>   (: = guest side)
   local a="${1/#:/$GUEST_USER@$ip:}" b="${2/#:/$GUEST_USER@$ip:}"
-  _ssh scp "${GUEST_SSH_OPTS[@]}" "$a" "$b"
+  _ssh scp -r "${GUEST_SSH_OPTS[@]}" "$a" "$b"   # -r so directories copy too
 }
 
 preflight() {
@@ -134,10 +139,11 @@ Drive the GUI (for GUI testing):
   screenshot [OUT]     capture the screen; OUT path on host, or '-'/omitted = raw PNG to stdout
   record SECS [OUT]    record SECS of screen video; OUT path on host, or '-' = raw mov to stdout
   start-ide [PROJECT]  launch IntelliJ IDEA (open PROJECT dir if given), wait until ready
-  click X Y            move+click at guest screen coords (cliclick)
-  type TEXT            type TEXT into the focused guest field (cliclick)
-  key KEYSTROKE        send a key/combo, e.g. 'cmd+space' (cliclick ku:/kd:)
-  pull :REMOTE LOCAL   copy a file out of the guest to the host
+  click X Y            move+click at guest screen coords (integers)
+  type TEXT            type TEXT into the focused guest field (any chars, safe)
+  key K                cliclick key command, e.g. "kp:return" or "kd:cmd kp:space ku:cmd"
+  pull REMOTE LOCAL    copy a file/dir OUT of the guest to the host
+  push LOCAL REMOTE    copy a file/dir INTO the guest from the host
 
 Env: TART_VM TART_IMAGE TART_CPU TART_MEMORY TART_DISPLAY TART_USER TART_PASS
      TART_DIR TART_CACHE_DIR TART_KEYCHAIN_PW
@@ -166,7 +172,7 @@ case "$cmd" in
       if security unlock-keychain -p "$KEYCHAIN_PW" login.keychain 2>/dev/null; then
         log "host login.keychain unlocked (required for macOS guests on macOS 15+)"
       else
-        log "WARN: could not unlock login.keychain — a macOS guest may fail with a Code=-9 security error"
+        die "could not unlock login.keychain with TART_KEYCHAIN_PW — a macOS guest will fail to boot (Code=-9). Fix the password or unlock it on the host."
       fi
     fi
     RUN_ARGS=(run "$VM" --no-graphics)
@@ -181,7 +187,13 @@ case "$cmd" in
     nohup tart "${RUN_ARGS[@]}" </dev/null >>"$RUN_LOG" 2>&1 &
     disown || true
     for i in $(seq 1 90); do [ -n "$(vm_ip)" ] && break; sleep 2; done
-    ip="$(vm_ip)"; [ -n "$ip" ] || die "VM got no IP after 180s — see $RUN_LOG"
+    ip="$(vm_ip)"
+    if [ -z "$ip" ]; then
+      # don't leak a half-booted VM on a shared host — stop what we just started
+      log "VM got no IP after 180s — stopping it to avoid a leaked VM (see $RUN_LOG)"
+      tart stop "$VM" 2>/dev/null || true
+      die "VM '$VM' failed to boot"
+    fi
     log "VM up at $ip"
     echo "$ip"
     ;;
@@ -199,8 +211,15 @@ case "$cmd" in
     fi
     ;;
 
-  vm-down) preflight; log "stopping $VM"; tart stop "$VM" 2>/dev/null || true; rm -f "$MUX"; ;;
-  vm-gc)   preflight; log "deleting $VM"; tart stop "$VM" 2>/dev/null || true; tart delete "$VM" 2>/dev/null || true; rm -f "$MUX"; ;;
+  vm-down) preflight; log "stopping $VM"; close_mux; tart stop "$VM" 2>/dev/null || true; ;;
+  vm-gc)
+    preflight; log "deleting $VM"; close_mux
+    tart stop "$VM" 2>/dev/null || true; sleep 1
+    tart delete "$VM" 2>/dev/null || true
+    rm -f "$ASKPASS"
+    vm_exists && die "failed to delete '$VM' — it is still present (in use?)"
+    log "deleted $VM"
+    ;;
 
   provision)
     preflight
@@ -235,6 +254,7 @@ case "$cmd" in
 
   record)
     SECS="${1:?usage: record SECS [OUT]}"; OUT="${2:--}"
+    is_int "$SECS" || die "record SECS must be a positive integer, got: $SECS"
     R="/tmp/tart-vid-$$.mov"
     # caffeinate keeps display+idle+system awake so the capture never freezes
     # on a display sleep (byte-identical-frames bug from the source repo).
@@ -265,11 +285,27 @@ case "$cmd" in
     log "IntelliJ launched; give it time to index (poll the screen with 'screenshot')"
     ;;
 
-  click) X="${1:?x}"; Y="${2:?y}"; gssh "cliclick m:$X,$Y c:$X,$Y"; ;;
-  type)  T="${1:?text}"; gssh "cliclick t:'$T'"; ;;
-  key)   K="${1:?keystroke}"; gssh "cliclick kp:'$K' 2>/dev/null || cliclick t:'$K'"; ;;
+  click)
+    X="${1:?usage: click X Y}"; Y="${2:?usage: click X Y}"
+    is_int "$X" && is_int "$Y" || die "click X Y must be integers, got: $X $Y"
+    gssh "cliclick m:$X,$Y c:$X,$Y"
+    ;;
+  type)
+    T="${1?usage: type TEXT}"
+    # transport arbitrary text (apostrophes, quotes, \$, spaces) safely via base64
+    B64="$(printf %s "$T" | base64 | tr -d '\n')"
+    gssh "t=\$(printf %s '$B64' | base64 -d); cliclick -w 20 t:\"\$t\""
+    ;;
+  key)
+    # pass cliclick key commands, e.g.:  key "kp:return"   or a combo:
+    #   key "kd:cmd kp:space ku:cmd"  (space-separated cliclick args)
+    K="${1:?usage: key \"kp:<name>\"  or combo \"kd:cmd kp:space ku:cmd\"}"
+    printf %s "$K" | LC_ALL=C grep -q '[^A-Za-z0-9:_+ -]' && die "key: unexpected characters in '$K'"
+    gssh "cliclick $K"
+    ;;
 
-  pull)  gscp "$1" "$2"; ;;
+  pull)  gscp ":$1" "$2"; ;;              # guest -> host:  pull REMOTE LOCAL
+  push)  gscp "$1" ":$2"; ;;              # host  -> guest: push LOCAL REMOTE
 
   vm-list|ls)
     # show ALL tart VMs on this shared host so you can pick a free name and see
@@ -286,15 +322,25 @@ case "$cmd" in
     if ls -d "$CACHE_DIR"/ide/IntelliJ*.app >/dev/null 2>&1; then
       log "IDE already cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
     else
+      # exclusive lock so two concurrent cache-setups don't clobber each other
+      LOCK="$CACHE_DIR/.setup.lock"
+      mkdir "$LOCK" 2>/dev/null || die "another cache-setup holds the lock ($LOCK) — retry later"
+      # stage INSIDE the target fs so the final publish is an atomic rename
+      STAGE="$CACHE_DIR/ide/.staging-$$"; DMG="$STAGE/idea.dmg"; MNT="$(mktemp -d)"
+      cleanup_cs() { hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$STAGE"; rmdir "$LOCK" 2>/dev/null || true; }
+      trap cleanup_cs EXIT
+      mkdir -p "$STAGE"
       URL="${TART_IDE_URL:-https://download.jetbrains.com/product?code=IIC&latest&distribution=macM1}"
       log "downloading IntelliJ IDEA CE into shared cache (once): $URL"
-      curl -fL "$URL" -o /tmp/tart-idea.dmg
-      MNT="$(mktemp -d)"
-      hdiutil attach -nobrowse -quiet -mountpoint "$MNT" /tmp/tart-idea.dmg
-      cp -R "$MNT"/*.app "$CACHE_DIR/ide/" 2>/dev/null || { hdiutil detach -quiet "$MNT"; die "no .app in the downloaded dmg"; }
-      hdiutil detach -quiet "$MNT"; rm -f /tmp/tart-idea.dmg
-      xattr -dr com.apple.quarantine "$CACHE_DIR"/ide/*.app 2>/dev/null || true
+      curl -fL "$URL" -o "$DMG"
+      hdiutil attach -nobrowse -quiet -mountpoint "$MNT" "$DMG"
+      cp -R "$MNT"/*.app "$STAGE"/ 2>/dev/null || die "no .app in the downloaded dmg"
+      hdiutil detach -quiet "$MNT"
+      xattr -dr com.apple.quarantine "$STAGE"/*.app 2>/dev/null || true
+      # atomic publish: consumers only ever see a complete .app
+      for app in "$STAGE"/*.app; do mv "$app" "$CACHE_DIR/ide/"; done
       log "cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
+      # trap cleanup removes staging + lock
     fi
     du -sh "$CACHE_DIR" 2>/dev/null | awk '{print "cache size: "$1}'
     ;;
