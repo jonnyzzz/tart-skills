@@ -74,15 +74,28 @@ Use screenshots to locate targets, then cliclick via tart-remote:
 ```bash
 ssh "$MAC" '~/bin/tart-remote click 820 470'      # click at screen coords
 ssh "$MAC" '~/bin/tart-remote type "MyTest"'      # type into focused field
-ssh "$MAC" '~/bin/tart-remote key "kp:return"'            # a single key
-ssh "$MAC" '~/bin/tart-remote key "kd:cmd kp:space ku:cmd"'  # a combo (⌘+Space)
+ssh "$MAC" '~/bin/tart-remote key "kp:return"'            # a single named key
+ssh "$MAC" '~/bin/tart-remote key "kd:cmd kp:space ku:cmd"'  # combo with a special key (⌘Space)
+ssh "$MAC" '~/bin/tart-remote key "kd:cmd t:a ku:cmd"'    # combo with a LETTER (⌘A) — use t:, not kp:
 ```
+
+`kp:` only takes named special keys (return, space, esc, arrows, f1…), **not
+letters** — for a letter-with-modifier use `t:` inside the combo as shown.
+`tart-remote key` auto-releases modifiers after every call, so a mistyped combo
+can't leave ⌘/⌃ stuck.
 
 For complex actions (menus, gutter run icons), take a screenshot, compute the
 coordinate from the image, click, then screenshot again to confirm.
 
 ## Notes
 
-- First launch may show a JetBrains privacy/EULA dialog — screenshot to detect
-  it and click "Accept", or pre-seed IDE config via `tart-remote guest`.
+- **First launch walks through several dialogs, in order** — screenshot after
+  each and click through:
+  1. **JetBrains User Agreement** — tick "I confirm that I have read and accept
+     the terms" (a checkbox, *not* an Accept button), which enables **Continue**.
+  2. **Data Sharing** — "Don't Send" or "Send Anonymous Statistics".
+  3. macOS **"allow IntelliJ IDEA to find devices on local networks"** — Allow/Don't Allow.
+  Also, an OS **screen-recording consent** prompt (`com.apple.sshd-session …`)
+  can pop *over* the IDE even after provisioning's TCC grant — capture still
+  works; clear it with a `click` on **Allow** (see tart-vm-screenshot).
 - To record an IDE demo/test as video, see **tart-vm-video**.

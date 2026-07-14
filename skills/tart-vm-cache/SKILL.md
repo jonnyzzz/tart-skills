@@ -49,7 +49,7 @@ drive and screenshot it exactly as in **tart-vm-intellij**.
 CE once onto the host and runs it from the read-only mount:
 
 ```bash
-ssh "$MAC" '~/bin/tart-remote cache-setup'    # download IDEA CE into ~/tart-skills-cache (once)
+ssh "$MAC" '~/bin/tart-remote cache-setup'    # download IntelliJ IDEA Community Edition into ~/tart-skills-cache (once)
 ssh "$MAC" '~/bin/tart-remote cache-status'   # show what's cached + size
 ```
 

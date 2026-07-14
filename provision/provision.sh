@@ -81,6 +81,9 @@ if ! command -v cliclick >/dev/null 2>&1; then
   log "FATAL: cliclick did not install — not marking provisioned"
   exit 1
 fi
-IDE_LOC="$(ls -d "$CACHE_IDE_DIR"/IntelliJ*.app /Applications/IntelliJ*.app 2>/dev/null | head -1 || echo none)"
+# (capture then default — a `| head` under `set -o pipefail` exits nonzero via
+# SIGPIPE, so an inline `|| echo none` would append a stray second line)
+IDE_LOC="$(ls -d "$CACHE_IDE_DIR"/IntelliJ*.app /Applications/IntelliJ*.app 2>/dev/null | head -1)"
+[ -n "$IDE_LOC" ] || IDE_LOC=none
 touch "$HOME/.tart-skills-provisioned"
 log "done. cliclick=$(command -v cliclick), ffmpeg=$(command -v ffmpeg || echo MISSING), IDE=$IDE_LOC"

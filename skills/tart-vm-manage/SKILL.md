@@ -24,8 +24,9 @@ them:
    eats a neighbor's RAM/CPU.
 4. **Size modestly.** Don't grab all cores/RAM (`TART_CPU`/`TART_MEMORY`); leave
    headroom for others.
-5. **Never delete the shared cache** (`tart-vm-cache`) or the base images, and
-   never `vm-gc` a VM you didn't create.
+5. **Never delete the shared IDE cache** (`~/tart-skills-cache`; see
+   **tart-vm-cache**) or the base images, and never `vm-gc` a VM you didn't
+   create.
 
 Assumes `MAC="$MAC_USER@$MAC_HOST"` and `tart-remote` installed (see
 tart-remote-setup). Prefix every command with `ssh "$MAC" '~/bin/tart-remote ...'`.
@@ -100,6 +101,6 @@ new HostKey").
   is what makes GUI testing possible — you see it via `tart-vm-screenshot` and
   drive it via cliclick / `tart-vm-intellij`.
 - To *watch* it live from a human Mac, run on the host:
-  `tart run --vnc-experimental "$TART_VM"` on the host.
+  `tart run --vnc-experimental "$TART_VM"`.
 - Once up + provisioned, use **tart-vm-screenshot**, **tart-vm-intellij**, and
   **tart-vm-video**.

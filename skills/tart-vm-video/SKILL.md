@@ -21,8 +21,13 @@ Assumes `MAC="$MAC_USER@$MAC_HOST"` and a booted, provisioned VM.
 
 ```bash
 ssh "$MAC" '~/bin/tart-remote record 20 -' > demo.mov     # 20-second capture
-ffprobe demo.mov                                          # verify duration/size
+file demo.mov                                             # -> ISO Media, QuickTime movie
+ffprobe demo.mov                                          # duration/size — if ffmpeg is on THIS machine
 ```
+
+(`ffprobe`/`ffmpeg` here run on your agent machine; if they're not installed
+locally, `file demo.mov` is enough to confirm a valid capture, or transcode in
+the guest — see below.)
 
 ## Record to a file on the Mac host, then transcode + pull
 

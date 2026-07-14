@@ -133,7 +133,7 @@ VM lifecycle (management "service"):
   provision            copy + run provision.sh in the guest (IntelliJ, ffmpeg, TCC grant)
 
 Shared host cache (one IDE copy for all VMs — faster, less disk):
-  cache-setup          download IntelliJ IDEA CE into \$TART_CACHE_DIR once (on the host)
+  cache-setup          download IntelliJ IDEA Community Edition into \$TART_CACHE_DIR once (on the host)
   cache-status         show what the shared cache holds
 
 Drive the GUI (for GUI testing):
@@ -283,7 +283,9 @@ case "$cmd" in
     # `open -a` routes through launchd into the user's Aqua GUI session, so the
     # IDE gets a real desktop context (an SSH-forked java dies HeadlessException).
     # Prefer the shared host cache (mounted read-only) over a per-VM install.
-    APP="$(gssh "for d in \"$GUEST_CACHE/ide\" /Applications; do ls -d \"\$d\"/IntelliJ*.app 2>/dev/null; done | head -1")"
+    # `find` (not a shell glob) so a missing dir/no-match is silent — a zsh glob
+    # would print "no matches found" to stderr and look like a failure.
+    APP="$(gssh "find \"$GUEST_CACHE/ide\" /Applications -maxdepth 1 -name 'IntelliJ*.app' 2>/dev/null | head -1")"
     [ -n "$APP" ] || die "IntelliJ not found (shared cache or /Applications) — run: tart-remote cache-setup and/or provision"
     if [ -n "$PROJECT" ]; then
       log "opening IntelliJ with project: $PROJECT"
@@ -307,11 +309,17 @@ case "$cmd" in
     gssh "t=\$(printf %s '$B64' | base64 -d); cliclick -w 20 t:\"\$t\""
     ;;
   key)
-    # pass cliclick key commands, e.g.:  key "kp:return"   or a combo:
-    #   key "kd:cmd kp:space ku:cmd"  (space-separated cliclick args)
-    K="${1:?usage: key \"kp:<name>\"  or combo \"kd:cmd kp:space ku:cmd\"}"
+    # cliclick key commands, e.g.  key "kp:return"  or a combo
+    #   key "kd:cmd kp:space ku:cmd"  (space-separated cliclick args).
+    # NOTE: cliclick kp: accepts only named special keys (return, space, arrows,
+    # esc, f1…) — NOT letters. For a letter-with-modifier use t: inside the
+    # combo, e.g.  key "kd:cmd t:a ku:cmd"  (⌘A).
+    K="${1:?usage: key \"kp:<name>\"  or combo \"kd:cmd t:a ku:cmd\"}"
     printf %s "$K" | LC_ALL=C grep -q '[^A-Za-z0-9:_+ -]' && die "key: unexpected characters in '$K'"
-    gssh "cliclick $K"
+    # ALWAYS release modifiers afterward, even if the combo errored mid-way — a
+    # stranded Cmd/Ctrl turns later keystrokes into shortcuts (once triggered the
+    # macOS logout dialog). Preserve the real exit code of the user's command.
+    gssh "cliclick $K; rc=\$?; cliclick ku:cmd,ctrl,alt,shift >/dev/null 2>&1 || true; exit \$rc"
     ;;
 
   pull)  R="${1:?usage: pull REMOTE LOCAL}"; L="${2:?usage: pull REMOTE LOCAL}"; gscp ":$R" "$L"; ;;   # guest -> host
@@ -324,7 +332,7 @@ case "$cmd" in
     ;;
 
   cache-setup)
-    # Populate the shared host cache with the IntelliJ IDEA CE app ONCE, on the
+    # Populate the shared host cache with the IntelliJ IDEA Community Edition app ONCE, on the
     # host. Every VM then mounts it read-only (vm-up) and runs the IDE from
     # there — no per-VM download, no per-VM copy. Runs on macOS (hdiutil/curl are
     # stock; no Homebrew needed).
@@ -354,7 +362,7 @@ case "$cmd" in
       trap cleanup_cs EXIT INT TERM   # release lock + staging even if killed
       mkdir -p "$STAGE"
       URL="${TART_IDE_URL:-https://download.jetbrains.com/product?code=IIC&latest&distribution=macM1}"
-      log "downloading IntelliJ IDEA CE into shared cache (once): $URL"
+      log "downloading IntelliJ IDEA Community Edition into shared cache (once): $URL"
       curl -fL "$URL" -o "$DMG"
       hdiutil attach -nobrowse -quiet -mountpoint "$MNT" "$DMG"
       cp -R "$MNT"/*.app "$STAGE"/ 2>/dev/null || die "no .app in the downloaded dmg"

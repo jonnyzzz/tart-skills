@@ -91,7 +91,7 @@ etiquette so they don't step on each other:
   the IDE runs straight from the mount. See **tart-vm-cache**.
 
 ```bash
-ssh "$MAC" '~/bin/tart-remote cache-setup'    # one-time: fetch IDEA CE into the shared host cache
+ssh "$MAC" '~/bin/tart-remote cache-setup'    # one-time: fetch IntelliJ IDEA Community Edition into the shared host cache
 ssh "$MAC" '~/bin/tart-remote cache-status'   # what's cached + size
 ```
 
@@ -191,7 +191,7 @@ ssh "$MAC" "$V ~/bin/tart-remote vm-gc"          # stop + delete YOUR VM
 
 ![IntelliJ IDEA launched inside the VM and driven over SSH](docs/img/intellij-launched.png)
 
-> *Above: `start-ide` launched IntelliJ IDEA CE straight to its EULA
+> *Above: `start-ide` launched IntelliJ IDEA Community Edition straight to its EULA
 > (provisioning de-quarantines the app, so no Gatekeeper prompt), and a `click`
 > cleared a macOS screen-recording consent — all driven over SSH from a separate
 > machine acting as the agent.*
@@ -210,7 +210,7 @@ Lifecycle (management "service"):
   provision            copy + run provision.sh in the guest
 
 Shared host cache (one IDE copy for all VMs — faster, less disk):
-  cache-setup          download IntelliJ IDEA CE into $TART_CACHE_DIR once (on the host)
+  cache-setup          download IntelliJ IDEA Community Edition into $TART_CACHE_DIR once (on the host)
   cache-status         show what the shared cache holds
 
 Drive the GUI:
@@ -288,7 +288,7 @@ Apple Silicon Mac, driven from a separate machine acting as the agent — with n
 Homebrew on the Mac (Tart installed brew-less, inner hop via `SSH_ASKPASS`):
 
 - `vm-create` (pull macOS 26 base) → `vm-up` (keychain-unlocked, detached boot)
-- `provision` (cliclick, ffmpeg, IntelliJ IDEA CE, TCC grant, de-quarantine)
+- `provision` (cliclick, ffmpeg, IntelliJ IDEA Community Edition, TCC grant, de-quarantine)
 - `screenshot -` → real desktop PNG (both images above are genuine captures)
 - `start-ide` → IntelliJ launched to its EULA (no Gatekeeper prompt)
 - `click` → cleared the macOS screen-recording consent dialog
