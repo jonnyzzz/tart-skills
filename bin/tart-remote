@@ -73,8 +73,10 @@ if command -v sshpass >/dev/null 2>&1; then
   AUTH=sshpass
 else
   AUTH=askpass
-  ( umask 077; printf '#!/bin/sh\nprintf %%s %q\n' "$GUEST_PASS" > "$ASKPASS" )  # 0600
-  chmod 700 "$ASKPASS"
+  # bash shebang: %q may emit $'...' ANSI-C quoting for exotic passwords, which
+  # /bin/sh (dash) wouldn't grok. umask makes it owner-only before chmod +x.
+  ( umask 077; printf '#!/usr/bin/env bash\nprintf %%s %q\n' "$GUEST_PASS" > "$ASKPASS" )
+  chmod 700 "$ASKPASS"   # 0700: askpass must be executable, owner-only
 fi
 close_mux() {   # cleanly close the multiplexed master, then drop the socket
   [ -S "$MUX" ] && ssh -o ControlPath="$MUX" -O exit x 2>/dev/null || true
@@ -147,6 +149,7 @@ Drive the GUI (for GUI testing):
 
 Env: TART_VM TART_IMAGE TART_CPU TART_MEMORY TART_DISPLAY TART_USER TART_PASS
      TART_DIR TART_CACHE_DIR TART_KEYCHAIN_PW
+     (advanced) TART_STATE_DIR TART_PROVISION TART_IDE_URL
 Current: VM=$VM IMAGE=$IMAGE CPU=$CPU MEM=${MEMORY}MiB DISPLAY=$DISPLAY_SIZE
          CACHE_DIR=$CACHE_DIR
 EOF
@@ -164,6 +167,7 @@ case "$cmd" in
 
   vm-up)
     preflight
+    [ -z "${TART_VM:-}" ] && log "note: using the default VM name '$VM' — on a SHARED host set a task-unique TART_VM to avoid colliding with other tasks (see: tart-remote ls)"
     vm_exists || { log "VM '$VM' does not exist — creating"; "$0" vm-create; }
     if vm_running && [ -n "$(vm_ip)" ]; then log "VM '$VM' already up at $(vm_ip)"; echo "$(vm_ip)"; exit 0; fi
     tart set "$VM" --cpu "$CPU" --memory "$MEMORY" --display "$DISPLAY_SIZE"
@@ -242,28 +246,34 @@ case "$cmd" in
   screenshot)
     OUT="${1:--}"
     R="/tmp/tart-shot-$$.png"
-    gssh "screencapture -x '$R'"
     if [ "$OUT" = "-" ]; then
-      gssh "cat '$R'"; gssh "rm -f '$R'"
+      # capture, verify non-empty, stream, and self-clean in ONE guest command so
+      # a failed capture never yields silent empty output and never leaks the temp
+      gssh "screencapture -x '$R' && test -s '$R' && cat '$R'; rc=\$?; rm -f '$R'; exit \$rc" \
+        || die "screencapture failed in guest (VM not provisioned, or GUI session not ready?)"
     else
       [ "${OUT#/}" = "$OUT" ] && OUT="$ART_DIR/$OUT"   # relative -> artifacts dir
-      gscp ":$R" "$OUT"; gssh "rm -f '$R'"
+      gssh "screencapture -x '$R' && test -s '$R'" \
+        || die "screencapture failed in guest (VM not provisioned, or GUI session not ready?)"
+      gscp ":$R" "$OUT"; gssh "rm -f '$R'" || true
       log "screenshot saved: $OUT"; echo "$OUT"
     fi
     ;;
 
   record)
     SECS="${1:?usage: record SECS [OUT]}"; OUT="${2:--}"
-    is_int "$SECS" || die "record SECS must be a positive integer, got: $SECS"
+    is_int "$SECS" && [ "$SECS" -ge 1 ] || die "record SECS must be a positive integer (>=1), got: $SECS"
     R="/tmp/tart-vid-$$.mov"
-    # caffeinate keeps display+idle+system awake so the capture never freezes
-    # on a display sleep (byte-identical-frames bug from the source repo).
-    gssh "caffeinate -d -i -s -t $((SECS+5)) >/dev/null 2>&1 & disown; screencapture -V $SECS -v '$R' >/tmp/tart-sc.log 2>&1; echo exit=\$?" >&2
+    # caffeinate keeps display+idle+system awake so the capture never freezes on
+    # a display sleep (byte-identical-frames bug from the source repo). Note:
+    # screencapture -V runs the FULL SECS regardless of activity.
+    gssh "caffeinate -d -i -s -t $((SECS+5)) >/dev/null 2>&1 & disown; screencapture -V $SECS -v '$R' >/tmp/tart-sc.log 2>&1 && test -s '$R'" \
+      || die "screencapture -V failed in guest (check /tmp/tart-sc.log in the guest)"
     if [ "$OUT" = "-" ]; then
-      gssh "cat '$R'"; gssh "rm -f '$R'"
+      gssh "cat '$R'; rc=\$?; rm -f '$R'; exit \$rc"
     else
       [ "${OUT#/}" = "$OUT" ] && OUT="$ART_DIR/$OUT"
-      gscp ":$R" "$OUT"; gssh "rm -f '$R'"
+      gscp ":$R" "$OUT"; gssh "rm -f '$R'" || true
       log "video saved: $OUT"; echo "$OUT"
     fi
     ;;
@@ -304,8 +314,8 @@ case "$cmd" in
     gssh "cliclick $K"
     ;;
 
-  pull)  gscp ":$1" "$2"; ;;              # guest -> host:  pull REMOTE LOCAL
-  push)  gscp "$1" ":$2"; ;;              # host  -> guest: push LOCAL REMOTE
+  pull)  R="${1:?usage: pull REMOTE LOCAL}"; L="${2:?usage: pull REMOTE LOCAL}"; gscp ":$R" "$L"; ;;   # guest -> host
+  push)  L="${1:?usage: push LOCAL REMOTE}"; R="${2:?usage: push LOCAL REMOTE}"; gscp "$L" ":$R"; ;;   # host  -> guest
 
   vm-list|ls)
     # show ALL tart VMs on this shared host so you can pick a free name and see
@@ -323,12 +333,25 @@ case "$cmd" in
       log "IDE already cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
     else
       # exclusive lock so two concurrent cache-setups don't clobber each other
-      LOCK="$CACHE_DIR/.setup.lock"
-      mkdir "$LOCK" 2>/dev/null || die "another cache-setup holds the lock ($LOCK) — retry later"
+      LOCK="$CACHE_DIR/.setup.lock"; HELD=""
+      if mkdir "$LOCK" 2>/dev/null; then HELD=1; else
+        # someone else holds it — wait for them to publish the app, and reclaim a
+        # stale lock (>30 min, e.g. from a killed run) so it can't wedge forever
+        for _ in $(seq 1 60); do
+          ls -d "$CACHE_DIR"/ide/IntelliJ*.app >/dev/null 2>&1 && break
+          [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ] && { log "reclaiming stale lock"; rmdir "$LOCK" 2>/dev/null || true; }
+          if mkdir "$LOCK" 2>/dev/null; then HELD=1; break; fi
+          sleep 10
+        done
+        if ls -d "$CACHE_DIR"/ide/IntelliJ*.app >/dev/null 2>&1; then
+          log "another cache-setup already populated it"; du -sh "$CACHE_DIR" 2>/dev/null | awk '{print "cache size: "$1}'; exit 0
+        fi
+        [ -n "$HELD" ] || die "cache-setup still locked ($LOCK) after waiting — remove it manually if stale"
+      fi
       # stage INSIDE the target fs so the final publish is an atomic rename
       STAGE="$CACHE_DIR/ide/.staging-$$"; DMG="$STAGE/idea.dmg"; MNT="$(mktemp -d)"
       cleanup_cs() { hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$STAGE"; rmdir "$LOCK" 2>/dev/null || true; }
-      trap cleanup_cs EXIT
+      trap cleanup_cs EXIT INT TERM   # release lock + staging even if killed
       mkdir -p "$STAGE"
       URL="${TART_IDE_URL:-https://download.jetbrains.com/product?code=IIC&latest&distribution=macM1}"
       log "downloading IntelliJ IDEA CE into shared cache (once): $URL"

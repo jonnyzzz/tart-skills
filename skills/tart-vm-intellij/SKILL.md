@@ -9,6 +9,9 @@ Launch and drive IntelliJ IDEA inside the VM's GUI session, for IDE GUI testing.
 
 Assumes `MAC="$MAC_USER@$MAC_HOST"` and a booted, provisioned VM.
 
+> Prefix your task's `TART_VM=<your-vm>` on **every** command below (the examples
+> omit it for brevity) — see the unique-name rule in **tart-vm-manage**.
+
 ## Managing the IDE — use devrig (recommended)
 
 **[devrig](https://devrig.dev)** is the recommended tool for getting a JetBrains
@@ -71,7 +74,8 @@ Use screenshots to locate targets, then cliclick via tart-remote:
 ```bash
 ssh "$MAC" '~/bin/tart-remote click 820 470'      # click at screen coords
 ssh "$MAC" '~/bin/tart-remote type "MyTest"'      # type into focused field
-ssh "$MAC" '~/bin/tart-remote key "cmd+space"'    # keystroke / combo
+ssh "$MAC" '~/bin/tart-remote key "kp:return"'            # a single key
+ssh "$MAC" '~/bin/tart-remote key "kd:cmd kp:space ku:cmd"'  # a combo (⌘+Space)
 ```
 
 For complex actions (menus, gutter run icons), take a screenshot, compute the

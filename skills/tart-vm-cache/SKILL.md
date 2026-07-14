@@ -12,7 +12,9 @@ the IDE binaries in a folder on the host** and mount it read-only into every VM.
 at `/Volumes/My Shared Files/tartcache`, and the IDE runs straight from there —
 no per-VM download, no per-VM copy.
 
-Assumes `MAC="$MAC_USER@$MAC_HOST"` and `tart-remote` installed.
+Assumes `MAC="$MAC_USER@$MAC_HOST"` and `tart-remote` installed. `cache-setup`
+and `cache-status` are host-wide (no VM needed); commands that touch a VM still
+need your task's `TART_VM=<your-vm>` (see **tart-vm-manage**).
 
 ## Recommended: manage IDEs with devrig (https://devrig.dev)
 

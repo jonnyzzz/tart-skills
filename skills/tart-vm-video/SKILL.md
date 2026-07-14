@@ -12,6 +12,9 @@ frozen/identical frames in the source project).
 
 Assumes `MAC="$MAC_USER@$MAC_HOST"` and a booted, provisioned VM.
 
+> Prefix your task's `TART_VM=<your-vm>` on **every** command below (the examples
+> omit it for brevity) — see the unique-name rule in **tart-vm-manage**.
+
 ## Record and pull the raw .mov to a local file
 
 `record SECS -` streams the raw `.mov` to stdout (logs to stderr):
@@ -25,13 +28,16 @@ ffprobe demo.mov                                          # verify duration/size
 
 ```bash
 ssh "$MAC" '~/bin/tart-remote record 30 take.mov'         # -> host path under ~/.tart-remote/artifacts/
-# transcode to a compact mp4 on the Mac (ffmpeg is installed in the guest, and
-# also commonly on the host):
-ssh "$MAC" 'ffmpeg -y -v error -i ~/.tart-remote/artifacts/take.mov \
-            -c:v libx264 -crf 20 -preset medium -pix_fmt yuv420p -movflags +faststart -an \
-            ~/.tart-remote/artifacts/take.mp4'
-scp "$MAC":~/.tart-remote/artifacts/take.mp4 ./take.mp4
+scp "$MAC":~/.tart-remote/artifacts/take.mov ./take.mov    # pull the raw .mov
+# transcode to a compact mp4 wherever you have ffmpeg (your agent machine here;
+# ffmpeg is installed inside the guest, but not necessarily on the Mac host):
+ffmpeg -y -v error -i ./take.mov \
+       -c:v libx264 -crf 20 -preset medium -pix_fmt yuv420p -movflags +faststart -an \
+       ./take.mp4
 ```
+
+To transcode inside the guest instead (guest has ffmpeg from provisioning), run
+it via `guest` before pulling the smaller `.mp4`.
 
 ## Recording a GUI test end-to-end
 

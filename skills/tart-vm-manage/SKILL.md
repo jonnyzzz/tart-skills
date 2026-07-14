@@ -52,7 +52,7 @@ new HostKey").
   but note this puts the password on the command line (visible in the host's
   process list); use only on a trusted host:
   ```bash
-  ssh "$MAC" "$V TART_KEYCHAIN_PW='<host-login-pw>' ~/bin/tart-remote vm-up"
+  ssh "$MAC" "TART_VM=<your-vm> TART_KEYCHAIN_PW='<host-login-pw>' ~/bin/tart-remote vm-up"
   ```
   If the supplied password can't unlock the keychain, `vm-up` aborts (the guest
   wouldn't boot anyway).
@@ -100,6 +100,6 @@ new HostKey").
   is what makes GUI testing possible — you see it via `tart-vm-screenshot` and
   drive it via cliclick / `tart-vm-intellij`.
 - To *watch* it live from a human Mac, run on the host:
-  `tart vnc-experimental tart-skills-vm` (or `tart run --vnc-experimental`).
+  `tart run --vnc-experimental "$TART_VM"` on the host.
 - Once up + provisioned, use **tart-vm-screenshot**, **tart-vm-intellij**, and
   **tart-vm-video**.

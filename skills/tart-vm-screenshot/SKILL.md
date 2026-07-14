@@ -14,6 +14,9 @@ tart-vm-manage). Uses macOS `screencapture -x` inside the guest; the TCC grant
 from provisioning is what makes an SSH-triggered capture contain the real screen
 instead of a black frame.
 
+> Prefix your task's `TART_VM=<your-vm>` on **every** command below (the examples
+> omit it for brevity) — see the unique-name rule in **tart-vm-manage**.
+
 ## Capture straight to a local file (recommended)
 
 `screenshot -` writes the raw PNG to stdout; logs go to stderr, so redirect:
@@ -43,6 +46,8 @@ ssh "$MAC" '~/bin/tart-remote screenshot -' > ide-splash.png   # verify it appea
 ssh "$MAC" '~/bin/tart-remote click 800 450'    # click something
 ssh "$MAC" '~/bin/tart-remote screenshot -' > after-click.png  # verify result
 ```
+
+For launching and driving IntelliJ specifically, see **tart-vm-intellij**.
 
 ## Tips
 

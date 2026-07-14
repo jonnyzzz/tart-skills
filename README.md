@@ -25,20 +25,20 @@ orchestrator (`tart-remote`) installed there. The agent stays on Linux; all the
 Mac- and VM-specific machinery lives behind a clean SSH seam.
 
 ```
-┌────────────────┐   ssh    ┌──────────────────────────┐          ┌─────────────────────┐
-│  Linux agent   │ ───────▶ │  Mac host (Apple Silicon) │  tart +  │  macOS GUI VM       │
-│  (the skills)  │          │  bin/tart-remote + tart   │  sshpass │  Aqua session:      │
-│                │ ◀─────── │  (boots + supervises VM)  │ ───────▶ │  IntelliJ, Finder…  │
-└────────────────┘  stdout  └──────────────────────────┘  ControlM└─────────────────────┘
-     PNG / MP4 / IP            the "management service"     mux         screencapture,
-                                                                        cliclick, open -a
+┌────────────────┐   ssh    ┌──────────────────────────┐    ssh   ┌─────────────────────┐
+│  Linux agent   │ ───────▶ │  Mac host (Apple Silicon) │   mux    │  macOS GUI VM       │
+│  (the skills)  │          │  bin/tart-remote + tart   │ ───────▶ │  Aqua session:      │
+│                │ ◀─────── │  (boots + supervises VM)  │          │  IntelliJ, Finder…  │
+└────────────────┘  stdout  └──────────────────────────┘          └─────────────────────┘
+     PNG / MP4 / IP            the "management service"          screencapture / cliclick
 ```
 
 Two SSH hops:
 
 1. **Outer (Linux → Mac):** the agent runs `ssh $MAC_USER@$MAC_HOST 'tart-remote …'`.
-2. **Inner (Mac → VM guest):** `tart-remote` uses `sshpass` + SSH `ControlMaster`
-   multiplexing to reach the guest (default creds `admin`/`admin`).
+2. **Inner (Mac → VM guest):** `tart-remote` reaches the guest with `admin`/`admin`
+   over a multiplexed SSH connection (password via `sshpass`, or `SSH_ASKPASS` if
+   `sshpass` isn't installed).
 
 ## The management layer (the "service")
 
@@ -47,8 +47,7 @@ in and ran it, the VM would die the moment the SSH command returned. `tart-remot
 treats the VM as a **supervised resource**:
 
 - **`vm-up`** boots it *detached* (`nohup … </dev/null & disown`), so the VM — and
-  its GUI session — **survives the agent's SSH connection closing**. *(Verified:
-  the VM stays `running` after the launching process exits.)*
+  its GUI session — keeps running after the agent's SSH connection closes.
 - State is read straight from Tart (`tart list` / `tart ip`) — no extra bookkeeping.
 - The inner SSH connection is multiplexed with `ControlMaster`/`ControlPersist`,
   which avoids macOS sshd's "Too many authentication failures" lockout under the
@@ -90,6 +89,18 @@ etiquette so they don't step on each other:
   (`~/tart-skills-cache`), mounted read-only into every VM — no per-VM download,
   no per-VM disk copy. `tart-remote cache-setup` populates it; `vm-up` mounts it;
   the IDE runs straight from the mount. See **tart-vm-cache**.
+
+```bash
+ssh "$MAC" '~/bin/tart-remote cache-setup'    # one-time: fetch IDEA CE into the shared host cache
+ssh "$MAC" '~/bin/tart-remote cache-status'   # what's cached + size
+```
+
+Moving files in and out of the guest:
+
+```bash
+ssh "$MAC" "$V ~/bin/tart-remote push ./project /Users/admin/Work/project"   # host  -> guest
+ssh "$MAC" "$V ~/bin/tart-remote pull /Users/admin/out.log ./out.log"        # guest -> host
+```
 
 ## Prerequisites
 
@@ -195,17 +206,23 @@ Lifecycle (management "service"):
   vm-status            exists / running / ip / provisioned
   vm-down              stop the VM (keeps the disk)
   vm-gc                stop + delete the VM
+  vm-list | ls         list ALL tart VMs on this host (only touch your own)
   provision            copy + run provision.sh in the guest
+
+Shared host cache (one IDE copy for all VMs — faster, less disk):
+  cache-setup          download IntelliJ IDEA CE into $TART_CACHE_DIR once (on the host)
+  cache-status         show what the shared cache holds
 
 Drive the GUI:
   guest [cmd...]       run a command in the guest (interactive shell if none)
   screenshot [OUT]     capture the screen; OUT path on host, or '-'/omitted = PNG to stdout
   record SECS [OUT]    record SECS of video; OUT on host, or '-' = raw .mov to stdout
   start-ide [PROJECT]  launch IntelliJ (open PROJECT if given)
-  click X Y            move + click at guest screen coords (cliclick)
-  type TEXT            type into the focused field
-  key KEYSTROKE        send a key/combo (e.g. cmd+space)
-  pull :REMOTE LOCAL   copy a file out of the guest to the host
+  click X Y            move + click at guest screen coords (integers)
+  type TEXT            type any text into the focused field
+  key K                cliclick key command, e.g. "kp:return" or a combo "kd:cmd kp:space ku:cmd"
+  pull REMOTE LOCAL    copy a file/dir OUT of the guest to the host
+  push LOCAL REMOTE    copy a file/dir INTO the guest from the host
 ```
 
 Configuration via environment (prefix on the remote side, keep consistent across calls):
@@ -219,9 +236,10 @@ Configuration via environment (prefix on the remote side, keep consistent across
 | `TART_DISPLAY` | `1600x900` | logical resolution (also the screenshot/video size) |
 | `TART_USER` / `TART_PASS` | `admin` / `admin` | guest SSH credentials |
 | `TART_DIR` | — | share a host dir into the guest: `name:/host/path[:ro]` |
+| `TART_CACHE_DIR` | `~/tart-skills-cache` | host folder holding the shared IDE copy, mounted read-only into every VM |
 | `TART_KEYCHAIN_PW` | — | Mac host user's **login** password; `vm-up` unlocks `login.keychain` with it (required for macOS guests on a headless macOS 15+ host — see notes) |
 
-## How it works — design notes (all verified on real hardware)
+## How it works — design notes
 
 - **Full GUI, headless host.** The VM boots `--no-graphics` (no window on the
   Mac), but Tart's base images auto-log-in `admin` into a complete Aqua session
