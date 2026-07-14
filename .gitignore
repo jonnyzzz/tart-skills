@@ -1,0 +1,14 @@
+# local artifacts pulled from the VM
+/artifacts/
+*.mov
+*.mp4
+*.png
+!docs/**/*.png
+
+# SSH control sockets / logs
+*.mux
+*.log
+
+# editor / OS cruft
+.DS_Store
+.remember/
