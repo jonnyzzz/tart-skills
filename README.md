@@ -156,8 +156,10 @@ ssh "$MAC" '~/bin/tart-remote vm-down'        # stop (keep disk)  |  vm-gc to de
 
 ![IntelliJ IDEA launched inside the VM and driven over SSH](docs/img/intellij-launched.png)
 
-> *Above: `start-ide` launched IntelliJ IDEA CE (its EULA is on screen) and a
-> `click` dismissed the Gatekeeper prompt — all over SSH from outside the Mac.*
+> *Above: `start-ide` launched IntelliJ IDEA CE straight to its EULA
+> (provisioning de-quarantines the app, so no Gatekeeper prompt), and a `click`
+> cleared a macOS screen-recording consent — all driven over SSH from a separate
+> machine acting as the agent.*
 
 ## `tart-remote` command reference
 
@@ -239,11 +241,18 @@ minimal, GUI-testing-focused toolkit.
 
 ## Testing
 
-The Mac→VM layer here was validated end-to-end on real Apple Silicon: detached
-boot, `tart ip`, screenshot (the images above are real captures), video capture,
-IntelliJ install + launch, and cliclick — all over SSH. The outer Linux→Mac hop
-is a thin SSH wrapper; test it against any reachable Apple Silicon Mac (or, for a
-loopback smoke test, that same Mac's own `sshd`).
+This was validated **end-to-end over both SSH hops** against a real remote
+Apple Silicon Mac, driven from a separate machine acting as the agent — with no
+Homebrew on the Mac (Tart installed brew-less, inner hop via `SSH_ASKPASS`):
+
+- `vm-create` (pull macOS 26 base) → `vm-up` (keychain-unlocked, detached boot)
+- `provision` (cliclick, ffmpeg, IntelliJ IDEA CE, TCC grant, de-quarantine)
+- `screenshot -` → real desktop PNG (both images above are genuine captures)
+- `start-ide` → IntelliJ launched to its EULA (no Gatekeeper prompt)
+- `click` → cleared the macOS screen-recording consent dialog
+- `record 8 -` → valid 1600×900 QuickTime video
+
+The screenshots above were streamed straight through both hops to the agent.
 
 ## License
 
