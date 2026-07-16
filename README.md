@@ -189,12 +189,14 @@ ssh "$MAC" "$V ~/bin/tart-remote record 15 -" > clip.mov
 ssh "$MAC" "$V ~/bin/tart-remote vm-gc"          # stop + delete YOUR VM
 ```
 
-![IntelliJ IDEA launched inside the VM and driven over SSH](docs/img/intellij-launched.png)
+![IntelliJ IDEA Welcome screen inside the VM — EULA accepted by the agent](docs/img/intellij-launched.png)
 
-> *Above: `start-ide` launched IntelliJ IDEA Community Edition straight to its EULA
-> (provisioning de-quarantines the app, so no Gatekeeper prompt), and a `click`
-> cleared a macOS screen-recording consent — all driven over SSH from a separate
-> machine acting as the agent.*
+> *Above: the Welcome screen after `start-ide` — the agent walked the first-run
+> dialogs itself: ticked the JetBrains User Agreement checkbox, clicked Continue,
+> dismissed Data Sharing and the local-network prompt, and cleared a macOS
+> screen-recording consent along the way (provisioning de-quarantines the app, so
+> no Gatekeeper prompt) — all driven over SSH from a separate machine acting as
+> the agent. See the walkthrough in `skills/tart-vm-intellij`.*
 
 ## `tart-remote` command reference
 
@@ -288,10 +290,13 @@ Apple Silicon Mac, driven from a separate machine acting as the agent — with n
 Homebrew on the Mac (Tart installed brew-less, inner hop via `SSH_ASKPASS`):
 
 - `vm-create` (pull macOS 26 base) → `vm-up` (keychain-unlocked, detached boot)
-- `provision` (cliclick, ffmpeg, IntelliJ IDEA Community Edition, TCC grant, de-quarantine)
+- `provision` (cliclick, ffmpeg, IntelliJ IDEA Community Edition, TCC grant,
+  de-quarantine, display pinned to 1600x900)
 - `screenshot -` → real desktop PNG (both images above are genuine captures)
-- `start-ide` → IntelliJ launched to its EULA (no Gatekeeper prompt)
-- `click` → cleared the macOS screen-recording consent dialog
+- `start-ide` → IntelliJ launched, no Gatekeeper prompt
+- `click` → walked the first-run dialogs to the **Welcome screen**: cleared the
+  macOS screen-recording consent, accepted the JetBrains User Agreement
+  (checkbox + Continue), dismissed Data Sharing and the local-network prompt
 - `record 8 -` → valid 1600×900 QuickTime video
 
 The screenshots above were streamed straight through both hops to the agent.

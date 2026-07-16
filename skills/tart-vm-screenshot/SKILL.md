@@ -23,7 +23,7 @@ instead of a black frame.
 
 ```bash
 ssh "$MAC" '~/bin/tart-remote screenshot -' > shot.png
-file shot.png    # -> PNG image data, 1600 x 900 ...  (matches TART_DISPLAY)
+file shot.png    # -> PNG image data, 3200 x 1800 ... (2x of TART_DISPLAY 1600x900 — HiDPI)
 ```
 
 Then **read the PNG** with your image-viewing tool to inspect the GUI state.
@@ -51,9 +51,11 @@ For launching and driving IntelliJ specifically, see **tart-vm-intellij**.
 
 ## Tips
 
-- The image is the guest's **logical** resolution (`TART_DISPLAY`, default
-  1600x900). Set a fixed resolution in tart-vm-manage so coordinates for
-  `click`/`type` stay stable between runs.
+- `provision` pins the guest display to `TART_DISPLAY` (default 1600x900) using
+  displayplacer — a macOS 26 guest otherwise boots at 1024x768 no matter what
+  `tart set --display` requested. The pinned mode is HiDPI, so the PNG carries
+  **2x the logical pixels** (1600x900 → a 3200x1800 image): divide image
+  coordinates by 2 before feeding them to `click`.
 - If a capture is all-black: the VM likely was not provisioned (no TCC grant) —
   run `tart-remote provision`, or the GUI session had not finished login (wait
   and retry).

@@ -236,7 +236,7 @@ case "$cmd" in
     [ -n "$SRC" ] || die "provision.sh not found (set TART_PROVISION, or place it at ~/tart-skills/provision/provision.sh)"
     log "copying + running provision.sh in guest (installs take a while)"
     gscp "$SRC" ":/tmp/provision.sh"
-    gssh 'bash /tmp/provision.sh'
+    gssh "TART_DISPLAY_SIZE=$DISPLAY_SIZE bash /tmp/provision.sh"
     ;;
 
   guest)

@@ -28,6 +28,32 @@ grep -q 'brew shellenv' ~/.zshenv 2>/dev/null \
 log "installing cliclick + displayplacer + ffmpeg..."
 brew install cliclick displayplacer ffmpeg 2>&1 | tail -2 || true
 
+# 2b. Pin the guest's logical resolution. tart's `--display WxH` sets up the
+#     virtual display, but a macOS 26 guest boots its GUI at 1024x768 scaled
+#     anyway — click coordinates and screenshot sizes then drift between runs.
+#     Pin the mode from inside the guest (idempotent; TART_DISPLAY_SIZE is
+#     passed by `tart-remote provision`, default 1600x900). The pinned mode is
+#     HiDPI, so screenshots come out at 2x the logical size (1600x900 -> 3200x1800).
+WANT_RES="${TART_DISPLAY_SIZE:-1600x900}"
+DP="$(command -v displayplacer || true)"
+if [ -n "$DP" ]; then
+  SCREEN_ID="$("$DP" list 2>/dev/null | awk '/^Persistent screen id:/ {print $4; exit}')"
+  CUR_RES="$("$DP" list 2>/dev/null | awk '/^Resolution:/ {print $2; exit}')"
+  if [ -n "$SCREEN_ID" ] && [ "$CUR_RES" != "$WANT_RES" ]; then
+    if "$DP" "id:$SCREEN_ID res:$WANT_RES hz:60 color_depth:7 scaling:on" 2>/dev/null \
+       || "$DP" "id:$SCREEN_ID res:$WANT_RES scaling:on" 2>/dev/null \
+       || "$DP" "id:$SCREEN_ID res:$WANT_RES" 2>/dev/null; then
+      log "display pinned to $WANT_RES (was $CUR_RES)"
+    else
+      log "WARN: could not pin display to $WANT_RES (still $CUR_RES) — click coords may drift"
+    fi
+  else
+    log "display already $CUR_RES"
+  fi
+else
+  log "WARN: displayplacer missing — cannot pin display resolution"
+fi
+
 # 3. IntelliJ IDEA Community (the app under GUI test). CE bundles its own JBR,
 #    so no separate JDK is needed just to launch the IDE.
 CACHE_IDE_DIR="/Volumes/My Shared Files/tartcache/ide"

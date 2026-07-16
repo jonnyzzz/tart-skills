@@ -87,15 +87,36 @@ can't leave ⌘/⌃ stuck.
 For complex actions (menus, gutter run icons), take a screenshot, compute the
 coordinate from the image, click, then screenshot again to confirm.
 
+## First-run dialogs — the tested walkthrough
+
+A fresh VM's first IDE launch walks through several dialogs before the Welcome
+screen. The loop for each step: **screenshot → find the control in the image →
+click → screenshot again to verify it worked**. `click` takes logical points;
+the provisioned display mode is HiDPI, so the PNG has **2x the pixels — divide
+image coordinates by 2** (a 1600x900 display captures as a 3200x1800 image).
+
+Tested sequence (IDEA CE 2025.3, macos-tahoe-base guest, over both SSH hops):
+
+1. **Screen-recording consent** *(can pop over anything, including the EULA)* —
+   *"com.apple.sshd-session is requesting to bypass the system private window
+   picker…"*. Click **Allow**. Captures already work while it is showing.
+2. **JetBrains User Agreement** — tick the checkbox *"I confirm that I have
+   read and accept the terms…"* (bottom-left of the dialog; there is **no**
+   Accept button), verify via screenshot that **Continue** switched from
+   disabled to enabled, then click it. Acceptance persists inside the VM —
+   this happens once per VM, not once per launch.
+3. **Data Sharing** — click **Don't Send** (or **Send Anonymous Statistics**,
+   your task's call).
+4. **Local-network permission** — macOS pops *"Allow IntelliJ IDEA to find
+   devices on local networks?"* over the Welcome screen; click **Don't Allow**
+   unless the test actually needs network discovery.
+5. A final screenshot shows **Welcome to IntelliJ IDEA** — you are through:
+   New Project / Open / Clone Repository are clickable.
+
+Tidiness tip for hero screenshots: the base image restores a Terminal window on
+login — click the Terminal window to focus it, then `key "kd:cmd t:q ku:cmd"`
+(⌘Q) to quit it. (Avoid `guest "killall Terminal"` — the SSH channel can hang.)
+
 ## Notes
 
-- **First launch walks through several dialogs, in order** — screenshot after
-  each and click through:
-  1. **JetBrains User Agreement** — tick "I confirm that I have read and accept
-     the terms" (a checkbox, *not* an Accept button), which enables **Continue**.
-  2. **Data Sharing** — "Don't Send" or "Send Anonymous Statistics".
-  3. macOS **"allow IntelliJ IDEA to find devices on local networks"** — Allow/Don't Allow.
-  Also, an OS **screen-recording consent** prompt (`com.apple.sshd-session …`)
-  can pop *over* the IDE even after provisioning's TCC grant — capture still
-  works; clear it with a `click` on **Allow** (see tart-vm-screenshot).
 - To record an IDE demo/test as video, see **tart-vm-video**.
