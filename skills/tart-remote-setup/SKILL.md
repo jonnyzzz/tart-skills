@@ -29,7 +29,12 @@ MAC="$MAC_USER@$MAC_HOST"
 
 1. **Verify you can reach the Mac and it is Apple Silicon with tart:**
    ```bash
-   ssh "$MAC" 'uname -m; sw_vers -productVersion; which tart || echo NO-TART'
+   # Probe explicit locations — a non-login SSH shell's PATH omits ~/bin, so a
+   # bare `which tart` gives a false NO-TART even when tart is installed there.
+   ssh "$MAC" 'uname -m; sw_vers -productVersion;
+     for t in "$HOME/bin/tart" /opt/homebrew/bin/tart /usr/local/bin/tart; do
+       [ -x "$t" ] && { echo "tart: $t"; break; }; done || true;
+     command -v tart >/dev/null 2>&1 || [ -x "$HOME/bin/tart" ] || echo NO-TART'
    ```
    Expect `arm64`. If `NO-TART`, install Tart on the Mac. Two ways:
    - **With Homebrew:** `brew install cirruslabs/cli/tart`

@@ -107,9 +107,17 @@ if ! command -v cliclick >/dev/null 2>&1; then
   log "FATAL: cliclick did not install — not marking provisioned"
   exit 1
 fi
-# (capture then default — a `| head` under `set -o pipefail` exits nonzero via
-# SIGPIPE, so an inline `|| echo none` would append a stray second line)
-IDE_LOC="$(ls -d "$CACHE_IDE_DIR"/IntelliJ*.app /Applications/IntelliJ*.app 2>/dev/null | head -1)"
-[ -n "$IDE_LOC" ] || IDE_LOC=none
+# Find the IDE without a `| head` pipeline: under `set -o pipefail` + `set -e`,
+# `ls ... | head -1` aborts the whole script — `head` closes the pipe after one
+# line, `ls` dies of SIGPIPE (141), pipefail propagates it, and `set -e` fires
+# on THIS line, one step before the provisioned marker below (so provisioning
+# did all its work but exited 1 and never marked the VM). A glob loop takes the
+# first match with no pipe and no SIGPIPE.
+IDE_LOC=none
+for _ide in "$CACHE_IDE_DIR"/IntelliJ*.app /Applications/IntelliJ*.app; do
+  [ -e "$_ide" ] || continue
+  IDE_LOC="$_ide"
+  break
+done
 touch "$HOME/.tart-skills-provisioned"
 log "done. cliclick=$(command -v cliclick), ffmpeg=$(command -v ffmpeg || echo MISSING), IDE=$IDE_LOC"
