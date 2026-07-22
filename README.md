@@ -148,6 +148,13 @@ On the Apple Silicon Mac you will drive:
    authenticated connection.
 3. **Install Tart** (brew or brew-less — see above). No Homebrew, no Xcode
    Command Line Tools, and no other packages are required on the Mac.
+4. **(Dedicated hosts) Enable GUI auto-login as a startup action.** macOS guests
+   need an unlocked `login.keychain`, which a headless-rebooted Mac does not
+   have until someone logs in at the console. For an always-on automation host,
+   make it auto-login a GUI user at every boot — the keychain is then unlocked
+   automatically and VM boots just work (no `Code=-9`). See
+   **[docs/host-autologin.md](docs/host-autologin.md)**. The per-session
+   alternative is `TART_KEYCHAIN_PW` (below).
 
 ## Quick start
 
@@ -262,8 +269,12 @@ Configuration via environment (prefix on the remote side, keep consistent across
   `login.keychain` is locked, failing with a misleading `Code=-9` security
   error ("Failed to create new HostKey"). A headless SSH session leaves it
   locked. Set `TART_KEYCHAIN_PW` so `vm-up` runs `security unlock-keychain`
-  first — or keep a GUI login session active on the host. Linux guests are
-  unaffected. (See the [tart FAQ](https://tart.run/faq/) and
+  first — or, on a dedicated host, enable GUI auto-login so a real login
+  session keeps the keychain unlocked at every boot
+  (**[docs/host-autologin.md](docs/host-autologin.md)** — note that
+  `sysadminctl -autologin` fails over headless SSH, so that guide sets it up the
+  manual way). Linux guests are unaffected. (See the
+  [tart FAQ](https://tart.run/faq/) and
   [cirruslabs/tart#1146](https://github.com/cirruslabs/tart/issues/1146).)
 - **`open -a`, not a bare launch.** A Java GUI app launched directly from an SSH
   shell dies with `HeadlessException`; `open -a` routes through launchd into the
