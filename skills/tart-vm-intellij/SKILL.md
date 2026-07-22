@@ -57,6 +57,36 @@ for i in 1 2 3 4 5 6; do
 done
 ```
 
+### If the first launch hangs
+
+A JetBrains IDE's **very first launch** in a fresh guest sometimes deadlocks
+before any window renders — the main thread hangs in an AppKit
+Dock-notification during Java class init and never creates the EDT, so the
+screenshots stay stuck on the bare desktop and `idea.log` freezes within the
+first ~100 ms. If polling shows no window after ~60 s and the log is not
+growing, **kill it and relaunch** — the second launch comes up normally:
+
+```bash
+ssh "$MAC" '~/bin/tart-remote guest "pkill -9 -f CLion || pkill -9 -f idea || true"'
+ssh "$MAC" '~/bin/tart-remote guest "open -a /Applications/CLion.app"'   # full path is most reliable
+```
+
+Prefer the **full app path** with `open -a /Applications/<IDE>.app`: right after
+install, LaunchServices may not have registered the app yet, so `open -a CLion`
+can fail with `Unable to find application named 'CLion'`.
+
+### Licensing (commercial IDEs)
+
+A **commercial** IDE (CLion, IntelliJ IDEA Ultimate, …) opens onto a
+license-activation screen — "Welcome to <IDE> / Manage Licenses" with **Log In /
+Register / Start trial / Paid license** — and will **not** open a project until
+it is activated. Every activation path needs a JetBrains account login, so an
+unattended VM stops at that screen. IntelliJ IDEA **Community** and other
+free/EAP builds have no such gate. To drive a commercial IDE past the welcome
+screen, provision a license into the guest (e.g. a JetBrains account token / an
+`idea.key`/`clion.key`, or a license server) as part of your VM setup — the
+screenshot pipeline and launch work regardless; only the activation is gated.
+
 ## Get a project into the VM first (if needed)
 
 ```bash
