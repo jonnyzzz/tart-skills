@@ -75,17 +75,83 @@ Prefer the **full app path** with `open -a /Applications/<IDE>.app`: right after
 install, LaunchServices may not have registered the app yet, so `open -a CLion`
 can fail with `Unable to find application named 'CLion'`.
 
-### Licensing (commercial IDEs)
+### Licensing (commercial IDEs) — deploy a key file
 
 A **commercial** IDE (CLion, IntelliJ IDEA Ultimate, …) opens onto a
 license-activation screen — "Welcome to <IDE> / Manage Licenses" with **Log In /
 Register / Start trial / Paid license** — and will **not** open a project until
-it is activated. Every activation path needs a JetBrains account login, so an
-unattended VM stops at that screen. IntelliJ IDEA **Community** and other
-free/EAP builds have no such gate. To drive a commercial IDE past the welcome
-screen, provision a license into the guest (e.g. a JetBrains account token / an
-`idea.key`/`clion.key`, or a license server) as part of your VM setup — the
-screenshot pipeline and launch work regardless; only the activation is gated.
+it is activated. Every interactive activation path needs a JetBrains account
+login, so an unattended VM stops there. IntelliJ IDEA **Community** and other
+free/EAP builds have no such gate.
+
+If you already hold a license **key**, you don't need the login flow: JetBrains
+IDEs read a binary key file `<lowercase-product>.key` (e.g. `clion.key`,
+`idea.key`) from the IDE **config dir**, and it is **OS-independent** — a key
+file from any machine works in the guest. Drop it in before launch:
+
+```bash
+# 1. get the binary key file onto the guest (copy an existing <ide>.key verbatim —
+#    do NOT print its bytes). macOS guest config dir is version-matched:
+#      ~/Library/Application Support/JetBrains/<Product><MAJOR.MINOR>/<product>.key
+scp ./clion.key "$MAC":/tmp/clion.key
+ssh "$MAC" '~/bin/tart-remote push /tmp/clion.key /Users/admin/clion.key'
+# 2. deploy with a pushed script — the guest path has a space
+#    ("Application Support"), so a script sidesteps two-hop ssh quoting:
+cat > /tmp/deploy_key.sh <<'EOF'
+#!/bin/bash
+set -e
+DEST="$HOME/Library/Application Support/JetBrains/CLion2026.2"   # match the build
+mkdir -p "$DEST"; cp "$HOME/clion.key" "$DEST/clion.key"
+for d in "$HOME/Library/Application Support/JetBrains"/CLion*; do
+  [ -d "$d" ] && cp "$HOME/clion.key" "$d/clion.key"; done   # belt + suspenders
+echo DEPLOY_OK
+EOF
+ssh "$MAC" '~/bin/tart-remote push /tmp/deploy_key.sh /Users/admin/deploy_key.sh'
+ssh "$MAC" '~/bin/tart-remote guest "bash /Users/admin/deploy_key.sh"'
+```
+
+Then launch: CLion opens straight to the normal Welcome screen (no "Manage
+Licenses" gate) and will open projects. Confirm with a screenshot. The
+screenshot/launch pipeline works regardless of licensing; only activation is
+gated.
+
+### Reach the IDE internals (mcp-steroid) from your agent
+
+Screenshots + cliclick drive the GUI from the *outside*. For **programmatic**
+access to the IDE internals (projects, editors, run configs, inspections) use
+the **mcp-steroid** MCP endpoint that ships with **devrig**:
+
+```bash
+# 1. devrig in the guest (idempotent; installs under ~/.mcp-steroid, binary at
+#    ~/.mcp-steroid/bin/devrig — a non-login SSH PATH omits it, so full-path it).
+ssh "$MAC" '~/bin/tart-remote guest "curl -fsSL https://devrig.dev/install.sh | sh"'
+# 2. install the mcp-steroid IDE plugin (bundled in the devrig dist) into your
+#    licensed IDE's plugins dir and (re)launch it via open -a. devrig backends
+#    also work; the plugin is what exposes the HTTP endpoint.
+# 3. the plugin writes a connection marker (URL + Bearer token + port):
+ssh "$MAC" '~/bin/tart-remote guest "cat ~/.mcp-steroid/markers/*.mcp-steroid"'
+# 4. it binds 127.0.0.1:6315 INSIDE the guest — prove it there:
+ssh "$MAC" '~/bin/tart-remote guest "curl -s -o /dev/null -w %{http_code} http://localhost:6315/mcp"'  # 200
+```
+
+To reach it from a **remote agent** (not on the Mac), forward the guest port two
+hops (agent → Mac host → guest) with `ProxyJump`; the guest is `admin`/`admin`
+password-only, so install an agent pubkey into the guest's `authorized_keys`
+first for a keyless jump:
+
+```bash
+GUEST_IP=$(ssh "$MAC" '~/bin/tart-remote vm-ip')            # e.g. 192.168.64.3
+ssh -f -N -o ProxyJump="$MAC" -i ~/.ssh/<agent_key> \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -L 6315:127.0.0.1:6315 admin@"$GUEST_IP"
+TOKEN=$(ssh "$MAC" '~/bin/tart-remote guest "cat ~/.mcp-steroid/markers/*.mcp-steroid"' \
+        | grep -o 'Bearer [0-9a-f]*' | head -1 | cut -d' ' -f2)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:6315/api/jonnyzzz/mcp-steroid/v1/projects   # -> the open projects
+pkill -f '6315:127.0.0.1:6315'                                 # tear down when done
+```
+
+Read the port/token from the marker — never hard-code them.
 
 ## Get a project into the VM first (if needed)
 
