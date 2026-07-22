@@ -128,8 +128,10 @@ ssh "$MAC" '~/bin/tart-remote guest "curl -fsSL https://devrig.dev/install.sh | 
 # 2. install the mcp-steroid IDE plugin (bundled in the devrig dist) into your
 #    licensed IDE's plugins dir and (re)launch it via open -a. devrig backends
 #    also work; the plugin is what exposes the HTTP endpoint.
-# 3. the plugin writes a connection marker (URL + Bearer token + port):
-ssh "$MAC" '~/bin/tart-remote guest "cat ~/.mcp-steroid/markers/*.mcp-steroid"'
+# 3. the plugin writes a connection marker (URL + Bearer token + port). Confirm
+#    it EXISTS without printing it — the marker holds a live Bearer token, so
+#    never `cat` it to your transcript/artifacts:
+ssh "$MAC" '~/bin/tart-remote guest "ls ~/.mcp-steroid/markers/*.mcp-steroid"'
 # 4. it binds 127.0.0.1:6315 INSIDE the guest — prove it there:
 ssh "$MAC" '~/bin/tart-remote guest "curl -s -o /dev/null -w %{http_code} http://localhost:6315/mcp"'  # 200
 ```
@@ -141,17 +143,21 @@ first for a keyless jump:
 
 ```bash
 GUEST_IP=$(ssh "$MAC" '~/bin/tart-remote vm-ip')            # e.g. 192.168.64.3
+# Bind a DISTINCT local port (16315) if your agent host already runs its own
+# mcp-steroid on 127.0.0.1:6315 — otherwise `-L 6315:...` fails "Address already in use".
 ssh -f -N -o ProxyJump="$MAC" -i ~/.ssh/<agent_key> \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -L 6315:127.0.0.1:6315 admin@"$GUEST_IP"
+    -L 16315:127.0.0.1:6315 admin@"$GUEST_IP"
+# Capture the token into a var (this does NOT print it — the marker is never echoed):
 TOKEN=$(ssh "$MAC" '~/bin/tart-remote guest "cat ~/.mcp-steroid/markers/*.mcp-steroid"' \
         | grep -o 'Bearer [0-9a-f]*' | head -1 | cut -d' ' -f2)
 curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:6315/api/jonnyzzz/mcp-steroid/v1/projects   # -> the open projects
-pkill -f '6315:127.0.0.1:6315'                                 # tear down when done
+  http://localhost:16315/api/jonnyzzz/mcp-steroid/v1/projects   # -> the open projects
+pkill -f '16315:127.0.0.1:6315'                                 # tear down when done
 ```
 
-Read the port/token from the marker — never hard-code them.
+Read the port/token from the marker — never hard-code them, and never print the
+marker itself (it carries the token).
 
 ## Get a project into the VM first (if needed)
 

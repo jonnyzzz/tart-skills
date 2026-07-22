@@ -341,7 +341,17 @@ case "$cmd" in
       log "IDE already cached: $(ls -d "$CACHE_DIR"/ide/IntelliJ*.app | head -1)"
     else
       # exclusive lock so two concurrent cache-setups don't clobber each other
-      LOCK="$CACHE_DIR/.setup.lock"; HELD=""
+      LOCK="$CACHE_DIR/.setup.lock"; HELD=""; STAGE=""; MNT=""
+      # Install cleanup BEFORE acquiring the lock so EVERY exit path that holds it
+      # releases it — the "another run published it" exit 0 below, or any set -e
+      # failure before staging. Guards make it a no-op while STAGE/MNT are unset
+      # and while the lock is not held.
+      cleanup_cs() {
+        [ -n "$MNT" ] && hdiutil detach -quiet "$MNT" 2>/dev/null || true
+        [ -n "$STAGE" ] && rm -rf "$STAGE" || true
+        [ -n "$HELD" ] && rmdir "$LOCK" 2>/dev/null || true
+      }
+      trap cleanup_cs EXIT INT TERM
       if mkdir "$LOCK" 2>/dev/null; then HELD=1; else
         # someone else holds it — wait for them to publish the app, and reclaim a
         # stale lock (>30 min, e.g. from a killed run) so it can't wedge forever
@@ -358,8 +368,6 @@ case "$cmd" in
       fi
       # stage INSIDE the target fs so the final publish is an atomic rename
       STAGE="$CACHE_DIR/ide/.staging-$$"; DMG="$STAGE/idea.dmg"; MNT="$(mktemp -d)"
-      cleanup_cs() { hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$STAGE"; rmdir "$LOCK" 2>/dev/null || true; }
-      trap cleanup_cs EXIT INT TERM   # release lock + staging even if killed
       mkdir -p "$STAGE"
       URL="${TART_IDE_URL:-https://download.jetbrains.com/product?code=IIC&latest&distribution=macM1}"
       log "downloading IntelliJ IDEA Community Edition into shared cache (once): $URL"
